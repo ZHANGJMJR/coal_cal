@@ -48,27 +48,30 @@ def get_coals():
 
 # ---------- 添加原煤 ----------
 @app.route('/api/coals', methods=['POST'])
-def add_coal():
-    try:
-        data = request.json
-        fields = ['name', 'calorific', 'ash', 'sulfur', 'price']
-        if not all(k in data for k in fields):
-            return jsonify({"success": False, "message": "缺少必要参数"}), 400
+def save_coal():
+    data = request.json
 
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO raw_coals (name, calorific, ash, sulfur, price) VALUES (%s, %s, %s, %s, %s)",
-            (data['name'], data['calorific'], data['ash'], data['sulfur'], data['price'])
-        )
-        conn.commit()
-        cursor.close()
-        conn.close()
-        return jsonify({"success": True, "message": "添加成功"})
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({"success": False, "message": f"添加失败：{e}"}), 500
+    conn = get_connection()
+    c = conn.cursor()
 
+    if data.get("id"):  # UPDATE
+        c.execute("""
+            UPDATE raw_coals
+            SET name=%s, calorific=%s, ash=%s, sulfur=%s, price=%s, short_transport=%s
+            WHERE id=%s
+        """, (data["name"], data["calorific"], data["ash"], data["sulfur"],
+              data["price"], data["short_transport"], data["id"]))
+    else:  # INSERT
+        c.execute("""
+            INSERT INTO raw_coals (name, calorific, ash, sulfur, price, short_transport)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (data["name"], data["calorific"], data["ash"], data["sulfur"],
+              data["price"], data["short_transport"]))
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({"success": True})
 
 # ---------- 修改原煤 ----------
 @app.route('/api/coals/<int:coal_id>', methods=['PUT'])
@@ -241,14 +244,13 @@ def electric_blend():
 
         from itertools import combinations, product
 
-        best_plan = None
-        best_cost = float("inf")
+        plans = []  # ⭐ 保存所有可行方案
 
         # 只允许 1~3 种煤组合
         for k in [1, 2, 3]:
             for combo in combinations(coals, k):
 
-                # 枚举每种煤的比例（10%步进）
+                # 每种煤的比例按 10% 步进
                 steps = [i / 10 for i in range(11)]
 
                 for ratios in product(steps, repeat=k):
@@ -265,30 +267,36 @@ def electric_blend():
                         for c, r in zip(combo, ratios)
                     )
 
-                    if mix_cost < best_cost:
-                        best_cost = mix_cost
-                        best_plan = {
-                            "mix_calorific": mix_cal,
-                            "mix_cost": round(best_cost, 2),
-                            "items": [
-                                {
-                                    "name": combo[i]["name"],
-                                    "ratio": round(ratios[i], 2),
-                                    "price": combo[i]["price"],
-                                    "short_transport": combo[i]["short_transport"],
-                                }
-                                for i in range(k)
-                            ]
-                        }
+                    # ⭐ 保存方案
+                    plans.append({
+                        "mix_calorific": round(mix_cal, 2),
+                        "mix_cost": round(mix_cost, 2),
+                        "items": [
+                            {
+                                "name": combo[i]["name"],
+                                "ratio": round(ratios[i], 2),
+                                "price": combo[i]["price"],
+                                "short_transport": combo[i]["short_transport"],
+                            }
+                            for i in range(k)
+                        ]
+                    })
 
-        if best_plan:
-            return jsonify({"success": True, "data": best_plan})
+        # 若没有任何方案
+        if not plans:
+            return jsonify({"success": False, "message": "没有找到满足热值的配比"})
 
-        return jsonify({"success": False, "message": "没有找到满足热值的配比"})
+        # ⭐ 按成本升序
+        plans.sort(key=lambda x: x["mix_cost"])
+
+        # ⭐ 返回前 10 种方案（可修改为任意数量）
+        return jsonify({
+            "success": True,
+            "plans": plans[:10]
+        })
 
     except Exception as e:
         return jsonify({"success": False, "message": str(e)})
-
 
 # ---------- 前端首页 ----------
 @app.route('/')
