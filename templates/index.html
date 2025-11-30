@@ -14,7 +14,7 @@
 <header class="bg-blue-600 text-white p-4">
     <div class="container mx-auto">
         <h1 class="text-2xl md:text-3xl font-bold" style="display:flex;margin-left:20px; align-items:center;">
-            <img src="/static/logo.png" style="width:160px; height:auto; margin-right:16px; "> 配煤程序
+            <img src="/static/logo.png" style="width:170px; height:auto; margin-right:16px; "> 配煤程序
         </h1>
         {# <p class="text-sm md:text-base mt-1">多终端智能配煤解决方案</p> #}
     </div>
@@ -434,7 +434,7 @@
                         <p class="text-2xl font-bold">${result.指标.单位成本} 元/吨</p>
                     </div>
                     <div>
-                        <p class="text-gray-600">单位成本（含税13%）</p>
+                        <p class="text-gray-600">单位成本（含税价）</p>
                         <p class="text-2xl font-bold text-red-600">${taxCost} 元/吨</p>
                     </div>
                 `;
@@ -531,7 +531,7 @@
                 </div>
                 <div class="text-right text-gray-700">
                     <div>成本（不含税）：<span class="font-bold text-blue-600">${plan.mix_cost} 元/吨</span></div>
-                    <div>成本（含税13%）：<span class="font-bold text-red-600">${taxCost} 元/吨</span></div>
+                    <div>成本（含税价）：<span class="font-bold text-red-600">${taxCost} 元/吨</span></div>
                     <div>热值：<span class="font-bold">${plan.mix_calorific} kcal</span></div>
                 </div>
             </div>
@@ -579,7 +579,7 @@
                 <span>${plan.mix_cost} 元/吨</span>
             </div>
             <div class="font-bold flex justify-between text-red-600">
-                <span>总成本（含税13%）：</span>
+                <span>总成本（含税价）：</span>
                 <span>${taxCost} 元/吨</span>
             </div>
         `;
