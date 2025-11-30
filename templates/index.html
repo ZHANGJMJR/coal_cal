@@ -6,6 +6,7 @@
     <title>配煤程序</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="/static/css/font-awesome.min.css" rel="stylesheet">
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
     <script src="/static/js/chart.umd.min.js"></script>
 </head>
 
@@ -28,11 +29,11 @@
         </button>
         <button id="tab-blend"
                 class="tab-btn py-2 px-4 border-b-2 border-transparent text-gray-500 hover:text-gray-700">
-            <i class="fa fa-calculator mr-2"></i>配煤计算
+            <i class="fa fa-calculator mr-2"></i>配煤计算-待完善
         </button>
         <button id="tab-result"
                 class="tab-btn py-2 px-4 border-b-2 border-transparent text-gray-500 hover:text-gray-700">
-            <i class="fa fa-bar-chart mr-2"></i>计算结果
+            <i class="fa fa-bar-chart mr-2"></i>计算结果-待完善
         </button>
     </div>
 
@@ -158,27 +159,12 @@
             </form>
         </div>
 
+        <!-- 电煤多方案结果 -->
         <div id="electric-result" class="bg-white rounded-lg shadow-md p-4 mt-6 hidden">
-            <h2 class="text-xl font-semibold mb-4">电煤配比结果</h2>
-            <div id="electric-summary"
-                 class="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-md mb-4">
-                <!-- 汇总指标 -->
-            </div>
-            <div class="overflow-x-auto">
-                <table class="min-w-full">
-                    <thead>
-                    <tr class="bg-gray-100">
-                        <th class="py-2 px-4 border">煤种</th>
-                        <th class="py-2 px-4 border">配比</th>
-                        <th class="py-2 px-4 border">单价</th>
-                        <th class="py-2 px-4 border">短倒费</th>
-                    </tr>
-                    </thead>
-                    <tbody id="electric-table-body">
-                    <!-- 电煤配比数据 -->
-                    </tbody>
-                </table>
-            </div>
+            <h2 class="text-xl font-semibold mb-4">电煤配比方案（按成本排序）</h2>
+
+            <!-- 多个方案将动态插入到这里 -->
+            <div id="electric-plan-list" class="space-y-4"></div>
         </div>
     </div>
 
@@ -487,105 +473,110 @@
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(target)
             })
-                .then(response => response.json())
-                .then(res => {
-                    if (!res.success) {
-                        alert(res.message || '电煤配比计算失败');
+                .then(res => res.json())
+                .then(result => {
+                    if (!result.success) {
+                        alert(result.message || '电煤配比计算失败');
                         return;
                     }
 
-                    const data = res.data;
-                    const resultPanel = document.getElementById('electric-result');
-                    const summaryDiv = document.getElementById('electric-summary');
-                    const tableBody = document.getElementById('electric-table-body');
+                    const plans = result.plans;
+                    const resultPanel = document.getElementById("electric-result");
+                    const listDiv = document.getElementById("electric-plan-list");
 
-                    if (!data || !summaryDiv || !tableBody) {
-                        return;
-                    }
+                    listDiv.innerHTML = ""; // 清空旧内容
 
-                    // 显示汇总信息
+                    plans.forEach((plan, index) => {
+                        const isBest = index === 0;
 
-                    // 构建每种煤的明细公式
-                    let detailRows = data.items
-                        .map(item => {
-                            const single = item.price + item.short_transport + 1.8;
-                            const subtotal = single * item.ratio;
+                        // 方案卡片外框
+                        let card = document.createElement("div");
+                        card.className = "border border-gray-300 rounded-lg p-4";
+
+                        // 标题行
+                        card.innerHTML = `
+            <div class="flex justify-between items-center">
+                <div class="font-semibold text-lg">
+                    电煤方案 ${index + 1}
+                    ${isBest ? '<span class="text-red-600">(最优)</span>' : ''}
+                </div>
+                <div class="text-right text-gray-700">
+                    <div>成本：<span class="font-bold text-blue-600">${plan.mix_cost} 元/吨</span></div>
+                    <div>热值：<span class="font-bold">${plan.mix_calorific} kcal</span></div>
+                </div>
+            </div>
+        `;
+
+                        // 明细（比例 + 公式）
+                        let detailBox = document.createElement("div");
+                        detailBox.className = "hidden mt-3 bg-gray-50 p-3 rounded";
+                        let itemsHTML = plan.items.map(item => {
+                            const unitCost = item.price + item.short_transport + 1.8;
+                            const subtotal = unitCost * item.ratio;
 
                             return `
-        <div class="flex justify-between text-sm text-gray-700 py-1">
-            <span>${item.name}：</span>
-            <span>
-                (${item.price} + ${item.short_transport} + 1.8)
-                × ${(item.ratio).toFixed(2)}
-                = ${subtotal.toFixed(2)}
-            </span>
-        </div>
+                                <div class="py-2 text-sm border-b last:border-0">
+                                    <div class="flex justify-between">
+                                        <span class="font-medium">${item.name}</span>
+                                        <span>${(item.ratio * 100).toFixed(2)}%</span>
+                                    </div>
+
+                                    <div class="text-gray-600 mt-1">
+                                        🔥 热值：<span class="font-semibold">${item.calorific}</span> 大卡
+                                    </div>
+
+                                    <div class="text-gray-700 mt-1 flex justify-between">
+                                        <span>成本公式：</span>
+                                        <span>
+                                            (${item.price} + ${item.short_transport} + 1.8)
+                                            × ${item.ratio.toFixed(4)}
+                                            = <strong>${subtotal.toFixed(2)}</strong>
+                                        </span>
+                                    </div>
+                                </div>
+                            `;
+                        }).join("");
+
+                        {#            let itemsHTML = plan.items.map(item => {#}
+                        {#                const single = item.price + item.short_transport + 1.8;#}
+                        {#                const subtotal = single * item.ratio;#}
+                        {##}
+                        {#                return `#}
+                        {#    <div class="py-1 text-sm flex justify-between">#}
+                        {#        <span>${item.name}：${(item.ratio * 100).toFixed(1)}%</span>#}
+                        {#        <span>(${item.price} + ${item.short_transport} + 1.8)#}
+                        {#              × ${item.ratio.toFixed(2)} = ${subtotal.toFixed(2)}</span>#}
+                        {#    </div>#}
+                        {#`;#}
+                        {#            }).join("");#}
+
+                        detailBox.innerHTML = `
+            ${itemsHTML}
+            <div class="border-t pt-2 mt-2 font-bold flex justify-between">
+                <span>总成本：</span>
+                <span>${plan.mix_cost} 元/吨</span>
+            </div>
         `;
-                        })
-                        .join("");
 
-                    // 替换原 summaryDiv.innerHTML
-                    summaryDiv.innerHTML = `
-                                            <div>
-                                                <p class="text-gray-600">混合发热量</p>
-                                                <p class="text-2xl font-bold">${data.mix_calorific.toFixed(2)} 大卡</p>
-                                            </div>
+                        // 按钮
+                        let btn = document.createElement("button");
+                        btn.className = "mt-2 text-blue-600 underline text-sm hover:text-blue-800";
+                        btn.textContent = "展开详情 ▼";
 
-                                            <div>
-                                                <p class="text-gray-600">单位成本</p>
-                                                <p class="text-2xl font-bold">${data.mix_cost.toFixed(2)} 元/吨</p>
+                        btn.onclick = () => {
+                            detailBox.classList.toggle("hidden");
+                            btn.textContent = detailBox.classList.contains("hidden")
+                                ? "展开详情 ▼"
+                                : "收起详情 ▲";
+                        };
 
-                                                <!-- 折叠按钮 -->
-                                                <button id="toggle-formula"
-                                                        class="mt-2 text-blue-600 underline text-sm hover:text-blue-800">
-                                                    查看成本结构 ▼
-                                                </button>
+                        card.appendChild(btn);
+                        card.appendChild(detailBox);
 
-                                                <!-- 折叠内容 -->
-                                                <div id="formula-box"
-                                                     class="hidden mt-2 p-3 bg-gray-100 rounded text-sm text-gray-700">
-
-                                                    ${detailRows}
-
-                                                    <div class="border-t mt-2 pt-2 flex justify-between font-bold">
-                                                        <span>合计：</span>
-                                                        <span>${data.mix_cost.toFixed(2)} 元/吨</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            `;
-
-// 绑定按钮展开/收起事件
-                    setTimeout(() => {
-                        const btn = document.getElementById("toggle-formula");
-                        const box = document.getElementById("formula-box");
-
-                        if (btn && box) {
-                            btn.onclick = () => {
-                                box.classList.toggle("hidden");
-                                btn.textContent =
-                                    box.classList.contains("hidden")
-                                        ? "查看成本结构 ▼"
-                                        : "收起成本结构 ▲";
-                            };
-                        }
-                    }, 30);
-
-
-                    // 显示配比表格
-                    tableBody.innerHTML = '';
-                    data.items.forEach(item => {
-                        const tr = document.createElement('tr');
-                        tr.innerHTML = `
-                            <td class="py-2 px-4 border">${item.name}</td>
-                            <td class="py-2 px-4 border">${(item.ratio * 100).toFixed(1)}%</td>
-                            <td class="py-2 px-4 border">${item.price}</td>
-                            <td class="py-2 px-4 border">${item.short_transport}</td>
-                        `;
-                        tableBody.appendChild(tr);
+                        listDiv.appendChild(card);
                     });
 
-                    resultPanel.classList.remove('hidden');
+                    resultPanel.classList.remove("hidden");
                 });
         });
     }
