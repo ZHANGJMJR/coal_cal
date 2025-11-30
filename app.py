@@ -111,7 +111,8 @@ def calculate_blend():
         target = request.json or {}
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT name, calorific, ash, sulfur, price FROM raw_coals")
+        # cursor.execute("SELECT name, calorific, ash, sulfur, price FROM raw_coals")
+        cursor.execute("SELECT name, calorific, ash, sulfur, price, short_transport FROM raw_coals")
         raw_coals = cursor.fetchall()
         cursor.close()
         conn.close()
@@ -211,6 +212,82 @@ def delete_history(hid):
         return jsonify({"success": True, "message": "记录已删除"})
     except Exception as e:
         return jsonify({"success": False, "message": f"删除失败：{e}"}), 500
+
+
+@app.route('/api/electric_blend', methods=['POST'])
+def electric_blend():
+    try:
+        target = request.json or {}
+        target_calorific = float(target.get("calorific", 0))
+
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT name, calorific, price, short_transport FROM raw_coals")
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        if not rows:
+            return jsonify({"success": False, "message": "没有原煤数据"})
+
+        coals = []
+        for r in rows:
+            coals.append({
+                "name": r[0],
+                "calorific": float(r[1]),
+                "price": float(r[2]),
+                "short_transport": float(r[3]),
+            })
+
+        from itertools import combinations, product
+
+        best_plan = None
+        best_cost = float("inf")
+
+        # 只允许 1~3 种煤组合
+        for k in [1, 2, 3]:
+            for combo in combinations(coals, k):
+
+                # 枚举每种煤的比例（10%步进）
+                steps = [i / 10 for i in range(11)]
+
+                for ratios in product(steps, repeat=k):
+                    if abs(sum(ratios) - 1.0) > 0.01:
+                        continue
+
+                    mix_cal = sum(c["calorific"] * r for c, r in zip(combo, ratios))
+                    if mix_cal < target_calorific:
+                        continue
+
+                    # 成本 = 单价 + 短倒费 + 1.8 配煤费
+                    mix_cost = sum(
+                        (c["price"] + c["short_transport"] + 1.8) * r
+                        for c, r in zip(combo, ratios)
+                    )
+
+                    if mix_cost < best_cost:
+                        best_cost = mix_cost
+                        best_plan = {
+                            "mix_calorific": mix_cal,
+                            "mix_cost": round(best_cost, 2),
+                            "items": [
+                                {
+                                    "name": combo[i]["name"],
+                                    "ratio": round(ratios[i], 2),
+                                    "price": combo[i]["price"],
+                                    "short_transport": combo[i]["short_transport"],
+                                }
+                                for i in range(k)
+                            ]
+                        }
+
+        if best_plan:
+            return jsonify({"success": True, "data": best_plan})
+
+        return jsonify({"success": False, "message": "没有找到满足热值的配比"})
+
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)})
 
 
 # ---------- 前端首页 ----------

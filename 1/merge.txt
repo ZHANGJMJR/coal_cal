@@ -1,0 +1,425 @@
+// coal_controller.dart
+import 'package:get/get.dart';
+import 'package:hive/hive.dart';
+
+import '../models/coal_model.dart';
+
+class CoalController extends GetxController {
+  var coalBox = Hive.box<CoalModel>('coalBox');
+  var coalList = <CoalModel>[].obs;
+
+  @override
+  void onInit() {
+    super.onInit();
+    loadCoal();
+  }
+
+  void loadCoal() {
+    coalList.value = coalBox.values.toList();
+  }
+
+  void addCoal(CoalModel coal) {
+    coalBox.add(coal);
+    loadCoal();
+  }
+
+  void deleteCoal(int index) {
+    coalBox.deleteAt(index);
+    loadCoal();
+  }
+
+  double calculateOptimal() {
+    if (coalList.isEmpty) return 0;
+    double total = coalList.map((c) => c.calorific).reduce((a, b) => a + b);
+    return total / coalList.length;
+  }
+}
+
+
+// main.dart
+// main.dart
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+
+import 'models/coal_model.dart';
+import 'pages/home_page.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Hive.initFlutter();
+  Hive.registerAdapter(CoalModelAdapter());
+  await Hive.openBox<CoalModel>('coalBox');
+  runApp(MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return GetMaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: '南戈壁配煤',
+      theme: ThemeData(
+        useMaterial3: true,
+        colorSchemeSeed: Colors.blue,
+      ),
+      home: HomePage(),
+    );
+  }
+}
+
+
+// coal_model.dart
+import 'package:hive/hive.dart';
+
+part 'coal_model.g.dart';
+
+@HiveType(typeId: 0)
+class CoalModel extends HiveObject {
+  @HiveField(0)
+  String name;
+
+  @HiveField(1)
+  double calorific;
+
+  @HiveField(2)
+  double ash;
+
+  @HiveField(3)
+  double sulfur;
+
+  CoalModel(
+      {required this.name,
+      required this.calorific,
+      required this.ash,
+      required this.sulfur});
+}
+
+
+// coal_model.g.dart
+// GENERATED CODE - DO NOT MODIFY BY HAND
+
+part of 'coal_model.dart';
+
+// **************************************************************************
+// TypeAdapterGenerator
+// **************************************************************************
+
+class CoalModelAdapter extends TypeAdapter<CoalModel> {
+  @override
+  final int typeId = 0;
+
+  @override
+  CoalModel read(BinaryReader reader) {
+    final numOfFields = reader.readByte();
+    final fields = <int, dynamic>{
+      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+    };
+    return CoalModel(
+      name: fields[0] as String,
+      calorific: fields[1] as double,
+      ash: fields[2] as double,
+      sulfur: fields[3] as double,
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, CoalModel obj) {
+    writer
+      ..writeByte(4)
+      ..writeByte(0)
+      ..write(obj.name)
+      ..writeByte(1)
+      ..write(obj.calorific)
+      ..writeByte(2)
+      ..write(obj.ash)
+      ..writeByte(3)
+      ..write(obj.sulfur);
+  }
+
+  @override
+  int get hashCode => typeId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CoalModelAdapter &&
+          runtimeType == other.runtimeType &&
+          typeId == other.typeId;
+}
+
+
+// calculate_page.dart
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+
+import '../controllers/coal_controller.dart';
+import '../models/coal_model.dart';
+import 'result_page.dart';
+
+class CalculatePage extends StatelessWidget {
+  final CoalController controller = Get.find();
+
+  final TextEditingController nameController = TextEditingController();
+  final TextEditingController calorificController = TextEditingController();
+  final TextEditingController ashController = TextEditingController();
+  final TextEditingController sulfurController = TextEditingController();
+
+  InputDecoration _inputDecoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      border: OutlineInputBorder(),
+      contentPadding: EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(24.0), // 增加整体边距
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(height: 16),
+            TextField(
+              controller: nameController,
+              decoration: _inputDecoration('煤种名称'),
+              style: TextStyle(fontSize: 20),
+            ),
+            SizedBox(height: 20),
+            TextField(
+              controller: calorificController,
+              decoration: _inputDecoration('发热量'),
+              keyboardType: TextInputType.number,
+              style: TextStyle(fontSize: 20),
+            ),
+            SizedBox(height: 20),
+            TextField(
+              controller: ashController,
+              decoration: _inputDecoration('灰分'),
+              keyboardType: TextInputType.number,
+              style: TextStyle(fontSize: 20),
+            ),
+            SizedBox(height: 20),
+            TextField(
+              controller: sulfurController,
+              decoration: _inputDecoration('硫分'),
+              keyboardType: TextInputType.number,
+              style: TextStyle(fontSize: 20),
+            ),
+            SizedBox(height: 32),
+            SizedBox(
+              height: 60, // 按钮高度
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  textStyle:
+                      TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                ),
+                child: Text('计算最优配比'),
+                onPressed: () {
+                  final coal = CoalModel(
+                    name: nameController.text,
+                    calorific: double.tryParse(calorificController.text) ?? 0,
+                    ash: double.tryParse(ashController.text) ?? 0,
+                    sulfur: double.tryParse(sulfurController.text) ?? 0,
+                  );
+                  controller.addCoal(coal);
+                  double optimal = controller.calculateOptimal();
+                  Get.to(() => ResultPage(optimal: optimal));
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+// history_page.dart
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import '../controllers/coal_controller.dart';
+
+class HistoryPage extends StatelessWidget {
+  final CoalController controller = Get.find();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('历史记录')),
+      body: Obx(() {
+        if (controller.coalList.isEmpty) {
+          return Center(child: Text('暂无记录'));
+        }
+        return ListView.builder(
+          itemCount: controller.coalList.length,
+          itemBuilder: (context, index) {
+            final coal = controller.coalList[index];
+            return ListTile(
+              title: Text(coal.name),
+              subtitle: Text(
+                  '发热量: ${coal.calorific}, 灰分: ${coal.ash}, 硫分: ${coal.sulfur}'),
+              trailing: IconButton(
+                icon: Icon(Icons.delete, color: Colors.red),
+                onPressed: () => controller.deleteCoal(index),
+              ),
+            );
+          },
+        );
+      }),
+    );
+  }
+}
+
+
+// home_page.dart
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+
+import '../controllers/coal_controller.dart';
+import 'calculate_page.dart';
+import 'result_page.dart';
+
+class HomePage extends StatefulWidget {
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  final CoalController controller = Get.put(CoalController());
+  int _currentIndex = 0;
+
+  late final List<Widget> _pages;
+
+  @override
+  void initState() {
+    super.initState();
+    _pages = [
+      CalculatePage(),
+      _buildRawCoalList(),
+      ResultPage(optimal: controller.calculateOptimal()),
+    ];
+  }
+
+  Widget _buildRawCoalList() {
+    return Obx(() {
+      if (controller.coalList.isEmpty) {
+        return Center(child: Text('暂无原煤记录'));
+      }
+      return ListView.builder(
+        itemCount: controller.coalList.length,
+        itemBuilder: (context, index) {
+          final coal = controller.coalList[index];
+          return Card(
+            margin: EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+            child: ListTile(
+              title: Text(coal.name),
+              subtitle: Text(
+                  '发热量: ${coal.calorific}, 灰分: ${coal.ash}, 硫分: ${coal.sulfur}'),
+              trailing: IconButton(
+                icon: Icon(Icons.delete, color: Colors.red),
+                onPressed: () => controller.deleteCoal(index),
+              ),
+            ),
+          );
+        },
+      );
+    });
+  }
+
+  void _onTabTapped(int index) {
+    setState(() {
+      _currentIndex = index;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Row(
+          children: [
+            Image.asset(
+              'assets/images/logo.png',
+              height: 32,
+            ),
+            SizedBox(width: 8),
+            Text('   配煤'),
+          ],
+        ),
+        elevation: 30,
+        centerTitle: true,
+      ),
+      body: _pages[_currentIndex],
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _currentIndex,
+        onDestinationSelected: _onTabTapped,
+        destinations: [
+          NavigationDestination(
+            icon: Icon(Icons.calculate_outlined),
+            selectedIcon: Icon(Icons.calculate),
+            label: '计算',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: '原煤',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.assessment_outlined),
+            selectedIcon: Icon(Icons.assessment),
+            label: '结果',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+// result_page.dart
+import 'package:flutter/material.dart';
+
+class ResultPage extends StatelessWidget {
+  final double optimal;
+
+  ResultPage({required this.optimal});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Text(
+        '最优发热量: ${optimal.toStringAsFixed(2)}',
+        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+      ),
+    );
+  }
+}
+
+
+// coal_card.dart
+import 'package:flutter/material.dart';
+import '../models/coal_model.dart';
+
+class CoalCard extends StatelessWidget {
+  final CoalModel coal;
+
+  CoalCard({required this.coal});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      child: ListTile(
+        title: Text(coal.name),
+        subtitle: Text(
+            '发热量: ${coal.calorific}, 灰分: ${coal.ash}, 硫分: ${coal.sulfur}'),
+      ),
+    );
+  }
+}
+
+
