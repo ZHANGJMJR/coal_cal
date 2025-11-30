@@ -11,7 +11,7 @@
  Target Server Version : 80042
  File Encoding         : 65001
 
- Date: 30/11/2025 15:53:40
+ Date: 30/11/2025 20:11:23
 */
 
 SET NAMES utf8mb4;
@@ -70,6 +70,8 @@ CREATE TABLE `raw_coals` (
   `sulfur` double NOT NULL,
   `price` double NOT NULL,
   `short_transport` double DEFAULT '0',
+  `screening_fee` decimal(10,2) DEFAULT '0.00',
+  `crushing_fee` decimal(10,2) DEFAULT '0.00',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=13 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -77,16 +79,16 @@ CREATE TABLE `raw_coals` (
 -- Records of raw_coals
 -- ----------------------------
 BEGIN;
-INSERT INTO `raw_coals` (`id`, `name`, `calorific`, `ash`, `sulfur`, `price`, `short_transport`) VALUES (1, '原煤A', 6000, 10, 0.6, 800, 0);
-INSERT INTO `raw_coals` (`id`, `name`, `calorific`, `ash`, `sulfur`, `price`, `short_transport`) VALUES (2, '原煤B', 5000, 15, 0.9, 600, 0);
-INSERT INTO `raw_coals` (`id`, `name`, `calorific`, `ash`, `sulfur`, `price`, `short_transport`) VALUES (3, '原煤C', 5500, 12, 0.7, 700, 0);
-INSERT INTO `raw_coals` (`id`, `name`, `calorific`, `ash`, `sulfur`, `price`, `short_transport`) VALUES (5, '222', 0, 222, 222, 222, 0);
-INSERT INTO `raw_coals` (`id`, `name`, `calorific`, `ash`, `sulfur`, `price`, `short_transport`) VALUES (6, '123', 6, 6, 9, 9, 15);
-INSERT INTO `raw_coals` (`id`, `name`, `calorific`, `ash`, `sulfur`, `price`, `short_transport`) VALUES (7, 'eeee', 111, 111, 1111, 1111, 0);
-INSERT INTO `raw_coals` (`id`, `name`, `calorific`, `ash`, `sulfur`, `price`, `short_transport`) VALUES (8, 'test', 11, 22, 33, 44, 0);
-INSERT INTO `raw_coals` (`id`, `name`, `calorific`, `ash`, `sulfur`, `price`, `short_transport`) VALUES (9, '666', 16, 26, 37, 48, 0);
-INSERT INTO `raw_coals` (`id`, `name`, `calorific`, `ash`, `sulfur`, `price`, `short_transport`) VALUES (10, 'W煤', 19900, 20, 9, 899, 0);
-INSERT INTO `raw_coals` (`id`, `name`, `calorific`, `ash`, `sulfur`, `price`, `short_transport`) VALUES (11, '123', 6, 6, 9, 88, 0);
+INSERT INTO `raw_coals` (`id`, `name`, `calorific`, `ash`, `sulfur`, `price`, `short_transport`, `screening_fee`, `crushing_fee`) VALUES (1, '原煤A', 6000, 10, 0.6, 800, 0, 0.00, 0.00);
+INSERT INTO `raw_coals` (`id`, `name`, `calorific`, `ash`, `sulfur`, `price`, `short_transport`, `screening_fee`, `crushing_fee`) VALUES (2, '原煤B', 5000, 15, 0.9, 600, 0, 0.00, 0.00);
+INSERT INTO `raw_coals` (`id`, `name`, `calorific`, `ash`, `sulfur`, `price`, `short_transport`, `screening_fee`, `crushing_fee`) VALUES (3, '原煤C', 5500, 12, 0.7, 700, 0, 0.00, 0.00);
+INSERT INTO `raw_coals` (`id`, `name`, `calorific`, `ash`, `sulfur`, `price`, `short_transport`, `screening_fee`, `crushing_fee`) VALUES (5, '222', 0, 222, 222, 222, 0, 0.00, 0.00);
+INSERT INTO `raw_coals` (`id`, `name`, `calorific`, `ash`, `sulfur`, `price`, `short_transport`, `screening_fee`, `crushing_fee`) VALUES (6, '123', 6, 6, 9, 9, 15, 0.10, 0.20);
+INSERT INTO `raw_coals` (`id`, `name`, `calorific`, `ash`, `sulfur`, `price`, `short_transport`, `screening_fee`, `crushing_fee`) VALUES (7, 'eeee', 111, 111, 1111, 1111, 0, 0.00, 0.00);
+INSERT INTO `raw_coals` (`id`, `name`, `calorific`, `ash`, `sulfur`, `price`, `short_transport`, `screening_fee`, `crushing_fee`) VALUES (8, 'test', 11, 22, 33, 44, 0, 0.00, 0.00);
+INSERT INTO `raw_coals` (`id`, `name`, `calorific`, `ash`, `sulfur`, `price`, `short_transport`, `screening_fee`, `crushing_fee`) VALUES (9, '666', 16, 26, 37, 48, 0, 0.00, 0.00);
+INSERT INTO `raw_coals` (`id`, `name`, `calorific`, `ash`, `sulfur`, `price`, `short_transport`, `screening_fee`, `crushing_fee`) VALUES (10, 'W煤', 19900, 20, 9, 899, 0, 0.00, 0.00);
+INSERT INTO `raw_coals` (`id`, `name`, `calorific`, `ash`, `sulfur`, `price`, `short_transport`, `screening_fee`, `crushing_fee`) VALUES (11, '123', 6, 6, 9, 88, 0, 0.00, 0.00);
 COMMIT;
 
 SET FOREIGN_KEY_CHECKS = 1;
