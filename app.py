@@ -16,11 +16,12 @@ logging.basicConfig(level=logging.ERROR)
 # ---------- MySQL 配置 ----------
 DB_CONFIG = {
     "host": "127.0.0.1",
-    "port": 3306,  # ← 必须是整型
+    "port": 3306,
     "user": "root",
     "password": "rootroot",
     "database": "coal_db"
 }
+
 
 # ---------- 创建 MySQL 连接 ----------
 def get_connection():
@@ -32,7 +33,7 @@ def get_connection():
             password=DB_CONFIG["password"],
             database=DB_CONFIG["database"],
             charset="utf8mb4",
-            cursorclass=pymysql.cursors.DictCursor  # ← 返回 dict
+            cursorclass=pymysql.cursors.DictCursor
         )
     except Exception as e:
         print(f"MySQL连接失败：{e}")
@@ -44,12 +45,14 @@ def get_connection():
 def handle_404(e):
     return "", 204
 
+
 @app.errorhandler(Exception)
 def handle_exception(e):
     if isinstance(e, NotFound):
         return "", 204
     logging.error("🔥 捕获未处理异常：%s", e, exc_info=True)
     return jsonify({"success": False, "message": "服务器内部错误"}), 500
+
 
 @app.route('/favicon.ico')
 def favicon():
@@ -66,7 +69,6 @@ def get_coals():
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        # 新增过筛费、破碎费字段
         cursor.execute("SELECT * FROM raw_coals ORDER BY id ASC")
         data = cursor.fetchall()
         cursor.close()
@@ -85,7 +87,6 @@ def save_coal():
     cursor = conn.cursor()
 
     if data.get("id"):  # UPDATE
-        # 新增过筛费、破碎费字段
         cursor.execute("""
             UPDATE raw_coals
             SET name=%s, calorific=%s, ash=%s, sulfur=%s, price=%s, short_transport=%s,
@@ -95,7 +96,6 @@ def save_coal():
               data["price"], data["short_transport"], data["screening_fee"],
               data["crushing_fee"], data["id"]))
     else:  # INSERT
-        # 新增过筛费、破碎费字段
         cursor.execute("""
             INSERT INTO raw_coals (name, calorific, ash, sulfur, price, short_transport,
                 screening_fee, crushing_fee)
@@ -135,7 +135,6 @@ def calculate_blend():
 
         conn = get_connection()
         cursor = conn.cursor()
-        # 新增过筛费、破碎费字段
         cursor.execute("""
             SELECT name, calorific, ash, sulfur, price, short_transport,
                 screening_fee, crushing_fee 
@@ -184,7 +183,6 @@ def calculate_blend():
         total_cal = sum(ratio[i] * coals[i]["calorific"] for i in range(n))
         total_ash = sum(ratio[i] * coals[i]["ash"] for i in range(n))
         total_sulfur = sum(ratio[i] * coals[i]["sulfur"] for i in range(n))
-        # 总成本包含过筛费、破碎费
         total_cost = sum(ratio[i] * (coals[i]["price"] + coals[i]["short_transport"] +
                                      coals[i]["screening_fee"] + coals[i]["crushing_fee"])
                          for i in range(n))
@@ -200,7 +198,7 @@ def calculate_blend():
 
         result_json = {
             "success": True,
-            "ratio": ratio_data,  # 只返回有效比例的煤种
+            "ratio": ratio_data,
             "指标": {
                 "发热量": round(total_cal, 2),
                 "灰分": round(total_ash, 2),
@@ -230,14 +228,27 @@ def electric_blend():
     try:
         target = request.json or {}
         target_calorific = float(target.get("calorific", 0))
+        selected_coal_ids = target.get("selected_coal_ids", [])  # 获取选中的原煤ID
 
         conn = get_connection()
         cursor = conn.cursor()
-        # 新增过筛费、破碎费字段
-        cursor.execute("""
-            SELECT name, calorific, price, short_transport, screening_fee, crushing_fee
-            FROM raw_coals
-        """)
+
+        # 根据选中的原煤ID过滤查询
+        if selected_coal_ids and len(selected_coal_ids) > 0:
+            # 构造IN查询的占位符
+            placeholders = ', '.join(['%s'] * len(selected_coal_ids))
+            cursor.execute(f"""
+                SELECT name, calorific, price, short_transport, screening_fee, crushing_fee
+                FROM raw_coals
+                WHERE id IN ({placeholders})
+            """, tuple(selected_coal_ids))
+        else:
+            # 未选择则查询全部
+            cursor.execute("""
+                SELECT name, calorific, price, short_transport, screening_fee, crushing_fee
+                FROM raw_coals
+            """)
+
         rows = cursor.fetchall()
         cursor.close()
         conn.close()
@@ -254,7 +265,7 @@ def electric_blend():
         price = [float(r["price"]) for r in rows]
         short = [float(r["short_transport"]) for r in rows]
         screening = [float(r["screening_fee"]) for r in rows]  # 过筛费
-        crushing = [float(r["crushing_fee"]) for r in rows]    # 破碎费
+        crushing = [float(r["crushing_fee"]) for r in rows]  # 破碎费
         blending_fee = 1.8
 
         # 单位成本 = 价格 + 短倒费 + 过筛费 + 破碎费 + 配煤费
@@ -269,7 +280,7 @@ def electric_blend():
         ]
         b_ub = [-target_calorific]
 
-        A_eq = [[1]*n]
+        A_eq = [[1] * n]
         b_eq = [1]
 
         bounds = [(0, 1) for _ in range(n)]
@@ -308,7 +319,7 @@ def electric_blend():
         k = len(coals2)
 
         # 步长调整为10%（0%,10%,20%...100%）
-        steps = [i/10 for i in range(11)]
+        steps = [i / 10 for i in range(11)]
 
         from itertools import product
 
@@ -361,6 +372,7 @@ def electric_blend():
         traceback.print_exc()
         return jsonify({"success": False, "message": str(e)})
 
+
 # ---------- 保存历史记录（需确保表结构存在） ----------
 def save_history(result):
     try:
@@ -375,6 +387,7 @@ def save_history(result):
         conn.close()
     except:
         pass
+
 
 @app.route('/')
 def index():
