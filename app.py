@@ -7,6 +7,7 @@ import datetime
 import traceback
 import logging
 from werkzeug.exceptions import NotFound
+from decimal import Decimal  # 导入 Decimal 类型
 
 app = Flask(__name__)
 CORS(app)
@@ -21,7 +22,13 @@ DB_CONFIG = {
     "password": "rootroot",
     "database": "coal_db"
 }
-
+# DB_CONFIG = {
+#     "host": "127.0.0.1",
+#     "port": 3309,  # ← 必须是整型
+#     "user": "coal",
+#     "password": "coal!@#$",
+#     "database": "coal_db"
+# }
 
 # ---------- 创建 MySQL 连接 ----------
 def get_connection():
@@ -38,6 +45,19 @@ def get_connection():
     except Exception as e:
         print(f"MySQL连接失败：{e}")
         return None
+
+
+# ---------- 类型转换工具函数 ----------
+def convert_decimal_to_float(data):
+    """递归将字典中的 Decimal 类型转换为 float"""
+    if isinstance(data, list):
+        return [convert_decimal_to_float(item) for item in data]
+    elif isinstance(data, dict):
+        return {key: float(value) if isinstance(value, Decimal) else value
+                for key, value in data.items()}
+    elif isinstance(data, Decimal):
+        return float(data)
+    return data
 
 
 # ---------- 全局异常处理 ----------
@@ -73,6 +93,8 @@ def get_coals():
         data = cursor.fetchall()
         cursor.close()
         conn.close()
+        # 转换 Decimal 类型
+        data = convert_decimal_to_float(data)
         return jsonify(data)
     except Exception as e:
         return jsonify({"success": False, "message": f"获取数据失败：{e}"}), 500
@@ -147,6 +169,8 @@ def calculate_blend():
         if not coals:
             return jsonify({"success": False, "message": "没有原煤数据"})
 
+        # 转换 Decimal 类型
+        coals = convert_decimal_to_float(coals)
         n = len(coals)
 
         # 目标函数：成本（含短倒费+过筛费+破碎费）
@@ -222,13 +246,18 @@ def calculate_blend():
 @app.route('/api/electric_blend', methods=['POST'])
 def electric_blend():
     """
-    电煤配比：满足热值 & 返回多种方案（最多 3 种）
-    先 LP 找最重要煤，再用 10% 枚举产生多方案
+    电煤配比：满足热值 & 返回多种方案（最多 5 种）
+    支持用户自定义枚举步长（1%、5%、10%）
     """
     try:
         target = request.json or {}
         target_calorific = float(target.get("calorific", 0))
-        selected_coal_ids = target.get("selected_coal_ids", [])  # 获取选中的原煤ID
+        selected_coal_ids = target.get("selected_coal_ids", [])
+
+        # 获取用户选择的步长（默认10%）
+        step_size = int(target.get("step_size", 10))
+        if step_size not in [1, 5, 10]:
+            step_size = 10  # 容错处理
 
         conn = get_connection()
         cursor = conn.cursor()
@@ -255,6 +284,9 @@ def electric_blend():
 
         if not rows:
             return jsonify({"success": False, "message": "没有原煤数据"})
+
+        # 转换 Decimal 类型
+        rows = convert_decimal_to_float(rows)
 
         # ---------------------------
         #  数据准备
@@ -302,7 +334,7 @@ def electric_blend():
             return jsonify({"success": False, "message": "没有可行方案"})
 
         # ---------------------------
-        #  第二步：对最重要的煤 1~3 种执行 10% 枚举
+        #  第二步：动态步长枚举
         # ---------------------------
         coals2 = []
         for i in top_idx:
@@ -318,15 +350,16 @@ def electric_blend():
 
         k = len(coals2)
 
-        # 步长调整为10%（0%,10%,20%...100%）
-        steps = [i / 10 for i in range(11)]
+        # 根据用户选择的步长生成枚举区间
+        step_ratio = step_size / 100.0
+        steps = [i * step_ratio for i in range(int(1 / step_ratio) + 1)]
 
         from itertools import product
 
         plans = []
 
         for ratios in product(steps, repeat=k):
-            if abs(sum(ratios) - 1.0) > 0.01:
+            if abs(sum(ratios) - 1.0) > 0.001:  # 容错范围
                 continue
 
             mix_cal = sum(coals2[i]["calorific"] * ratios[i] for i in range(k))
@@ -337,7 +370,7 @@ def electric_blend():
 
             items = []
             for i in range(k):
-                if ratios[i] > 0.001:  # 只添加比例>0的项
+                if ratios[i] > step_ratio / 2:  # 根据步长动态调整过滤阈值
                     items.append({
                         "name": coals2[i]["name"],
                         "ratio": round(ratios[i], 4),
@@ -359,13 +392,21 @@ def electric_blend():
         if not plans:
             return jsonify({"success": False, "message": "没有满足热值的配比方案"})
 
-        # 按成本排序
-        plans.sort(key=lambda p: p["mix_cost"])
+        # 去重处理（避免步长过小时产生重复方案）
+        unique_plans = []
+        seen_costs = set()
+        for plan in sorted(plans, key=lambda p: p["mix_cost"]):
+            cost_key = round(plan["mix_cost"], 2)
+            if cost_key not in seen_costs:
+                seen_costs.add(cost_key)
+                unique_plans.append(plan)
 
-        # 只返回前 3 种
+        # 按成本排序，最多返回前5种方案
+        unique_plans.sort(key=lambda p: p["mix_cost"])
+
         return jsonify({
             "success": True,
-            "plans": plans[:3]
+            "plans": unique_plans[:5]
         })
 
     except Exception as e:
