@@ -19,6 +19,23 @@
         input[type="checkbox"] {
             accent-color: #2563eb; /* 蓝色 */
         }
+
+        /* 表格行选中样式 */
+        tr.bg-blue-100 {
+            background-color: #eff6ff !important;
+        }
+
+        /* 按钮文字不换行 */
+        button {
+            white-space: nowrap;
+        }
+
+        /* 表单输入框焦点样式 */
+        input:focus {
+            border-color: #3b82f6;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
     </style>
 </head>
 
@@ -54,7 +71,7 @@
     <div id="panel-coal" class="tab-panel hidden">
         <div class="bg-white rounded-lg shadow-md p-4 mb-6">
             <h2 class="text-xl font-semibold mb-4">添加原煤</h2>
-            <form id="coal-form" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <form id="coal-form" class="grid grid-cols-1 md:grid-cols-5 gap-4">
                 <div>
                     <label class="block text-gray-700 mb-1">原煤名称</label>
                     <input type="text" id="coal-name" required
@@ -73,6 +90,31 @@
                 <div>
                     <label class="block text-gray-700 mb-1">硫分 (%)</label>
                     <input type="number" id="coal-sulfur" step="0.01" required
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                </div>
+                <div>
+                    <label class="block text-gray-700 mb-1">挥发份 (%)</label>
+                    <input type="number" id="coal-volatile" step="0.01" required
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                </div>
+                <div>
+                    <label class="block text-gray-700 mb-1">回收率 (%)</label>
+                    <input type="number" id="coal-recovery" step="0.01" required
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                </div>
+                <div>
+                    <label class="block text-gray-700 mb-1">G值</label>
+                    <input type="number" id="coal-g_value" step="0.01" required
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                </div>
+                <div>
+                    <label class="block text-gray-700 mb-1">Y值</label>
+                    <input type="number" id="coal-x_value" step="0.01" required
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                </div>
+                <div>
+                    <label class="block text-gray-700 mb-1">X值</label>
+                    <input type="number" id="coal-y_value" step="0.01" required
                            class="w-full px-3 py-2 border border-gray-300 rounded-md">
                 </div>
                 <div>
@@ -95,17 +137,17 @@
                     <input type="number" id="coal-crushing-fee" step="0.1" value="0"
                            class="w-full px-3 py-2 border border-gray-300 rounded-md">
                 </div>
-                <div class="flex items-end space-x-3">
+                <div class="flex items-center space-x-3 md:col-span-2 pt-2">
                     <button id="coal-submit-btn" type="submit"
-                            class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
+                            class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex-shrink-0">
                         <i class="fa fa-plus mr-1"></i>添加
                     </button>
                     <button id="coal-delete-btn" type="button"
-                            class="hidden bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700">
+                            class="hidden bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 flex-shrink-0">
                         <i class="fa fa-trash mr-1"></i>删除
                     </button>
                     <button id="coal-cancel-btn" type="button"
-                            class="hidden bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600">
+                            class="hidden bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600 flex-shrink-0">
                         <i class="fa fa-times mr-1"></i>取消编辑
                     </button>
                 </div>
@@ -122,6 +164,11 @@
                         <th class="py-2 px-4 border">发热量</th>
                         <th class="py-2 px-4 border">灰分</th>
                         <th class="py-2 px-4 border">硫分</th>
+                        <th class="py-2 px-4 border">挥发份</th>
+                        <th class="py-2 px-4 border">回收率</th>
+                        <th class="py-2 px-4 border">G值</th>
+                        <th class="py-2 px-4 border">Y值</th>
+                        <th class="py-2 px-4 border">X值</th>
                         <th class="py-2 px-4 border">价格</th>
                         <th class="py-2 px-4 border">短倒费</th>
                         <th class="py-2 px-4 border">过筛费</th>
@@ -320,16 +367,28 @@
                     row.setAttribute("data-id", coal.id);
                     row.classList.add("cursor-pointer", "hover:bg-blue-50");
 
+                    // 保留两位小数显示
+                    const volatile = coal.volatile ? coal.volatile.toFixed(2) : '0.00';
+                    const recovery = coal.recovery ? coal.recovery.toFixed(2) : '0.00';
+                    const gValue = coal.g_value ? coal.g_value.toFixed(2) : '0.00';
+                    const xValue = coal.x_value ? coal.x_value.toFixed(2) : '0.00';
+                    const yValue = coal.y_value ? coal.y_value.toFixed(2) : '0.00';
+
                     row.innerHTML = `
-                    <td class="py-2 px-4 border">${coal.name}</td>
-                    <td class="py-2 px-4 border">${coal.calorific}</td>
-                    <td class="py-2 px-4 border">${coal.ash}%</td>
-                    <td class="py-2 px-4 border">${coal.sulfur}%</td>
-                    <td class="py-2 px-4 border">${coal.price}</td>
-                    <td class="py-2 px-4 border">${coal.short_transport ?? 0}</td>
-                    <td class="py-2 px-4 border">${coal.screening_fee ?? 0}</td>
-                    <td class="py-2 px-4 border">${coal.crushing_fee ?? 0}</td>
-                `;
+                <td class="py-2 px-4 border">${coal.name}</td>
+                <td class="py-2 px-4 border">${coal.calorific}</td>
+                <td class="py-2 px-4 border">${coal.ash.toFixed(2)}%</td>
+                <td class="py-2 px-4 border">${coal.sulfur.toFixed(2)}%</td>
+                <td class="py-2 px-4 border">${volatile}%</td>
+                <td class="py-2 px-4 border">${recovery}%</td>
+                <td class="py-2 px-4 border">${gValue}</td>
+                <td class="py-2 px-4 border">${xValue}</td>
+                <td class="py-2 px-4 border">${yValue}</td>
+                <td class="py-2 px-4 border">${coal.price}</td>
+                <td class="py-2 px-4 border">${(coal.short_transport ?? 0).toFixed(2)}</td>
+                <td class="py-2 px-4 border">${(coal.screening_fee ?? 0).toFixed(2)}</td>
+                <td class="py-2 px-4 border">${(coal.crushing_fee ?? 0).toFixed(2)}</td>
+            `;
 
                     row.onclick = () => {
                         if (selectedRow) {
@@ -343,7 +402,6 @@
                     tableBody.appendChild(row);
                 });
 
-                // 同时加载原煤选择表格
                 loadCoalSelectionTable(coals);
             });
     }
@@ -422,21 +480,38 @@
     function editCoal(coal) {
         editingId = coal.id;
 
-        document.getElementById('coal-name').value = coal.name;
-        document.getElementById('coal-calorific').value = coal.calorific;
-        document.getElementById('coal-ash').value = coal.ash;
-        document.getElementById('coal-sulfur').value = coal.sulfur;
-        document.getElementById('coal-price').value = coal.price;
-        document.getElementById('coal-short-transport').value = coal.short_transport ?? 0;
-        document.getElementById('coal-screening-fee').value = coal.screening_fee ?? 0;
-        document.getElementById('coal-crushing-fee').value = coal.crushing_fee ?? 0;
+        // 确保所有字段都被正确赋值，包括新增字段
+        document.getElementById('coal-name').value = coal.name || '';
+        document.getElementById('coal-calorific').value = coal.calorific ? coal.calorific.toFixed(1) : '';
+        document.getElementById('coal-ash').value = coal.ash ? coal.ash.toFixed(2) : '';
+        document.getElementById('coal-sulfur').value = coal.sulfur ? coal.sulfur.toFixed(2) : '';
 
-        document.getElementById("coal-submit-btn").innerHTML = `<i class="fa fa-save mr-1"></i>保存修改`;
-        document.getElementById("coal-submit-btn").classList.remove("bg-blue-600");
-        document.getElementById("coal-submit-btn").classList.add("bg-green-600");
+        // 新增字段的赋值
+        document.getElementById('coal-volatile').value = (coal.volatile !== undefined) ? coal.volatile.toFixed(2) : '';
+        document.getElementById('coal-recovery').value = (coal.recovery !== undefined) ? coal.recovery.toFixed(2) : '';
+        document.getElementById('coal-g_value').value = (coal.g_value !== undefined) ? coal.g_value.toFixed(2) : '';
+        document.getElementById('coal-x_value').value = (coal.x_value !== undefined) ? coal.x_value.toFixed(2) : '';
+        document.getElementById('coal-y_value').value = (coal.y_value !== undefined) ? coal.y_value.toFixed(2) : '';
+
+        document.getElementById('coal-price').value = coal.price ? coal.price.toFixed(1) : '';
+        document.getElementById('coal-short-transport').value = coal.short_transport ? coal.short_transport.toFixed(2) : '0.00';
+        document.getElementById('coal-screening-fee').value = coal.screening_fee ? coal.screening_fee.toFixed(2) : '0.00';
+        document.getElementById('coal-crushing-fee').value = coal.crushing_fee ? coal.crushing_fee.toFixed(2) : '0.00';
+
+        // 更新按钮状态
+        const submitBtn = document.getElementById("coal-submit-btn");
+        submitBtn.innerHTML = `<i class="fa fa-save mr-1"></i>保存修改`;
+        submitBtn.classList.remove("bg-blue-600");
+        submitBtn.classList.add("bg-green-600");
+
         const delBtn = document.getElementById("coal-delete-btn");
         if (delBtn) delBtn.classList.remove("hidden");
-        document.getElementById("coal-cancel-btn").classList.remove("hidden");
+
+        const cancelBtn = document.getElementById("coal-cancel-btn");
+        if (cancelBtn) cancelBtn.classList.remove("hidden");
+
+        // 滚动到表单顶部
+        document.getElementById('coal-form').scrollIntoView({behavior: 'smooth'});
     }
 
     function resetCoalFormState() {
@@ -445,6 +520,11 @@
         document.getElementById('coal-short-transport').value = 0;
         document.getElementById('coal-screening-fee').value = 0;
         document.getElementById('coal-crushing-fee').value = 0;
+        document.getElementById('coal-volatile').value = '';
+        document.getElementById('coal-recovery').value = '';
+        document.getElementById('coal-g_value').value = '';
+        document.getElementById('coal-x_value').value = '';
+        document.getElementById('coal-y_value').value = '';
 
         const submitBtn = document.getElementById("coal-submit-btn");
         submitBtn.innerHTML = `<i class="fa fa-plus mr-1"></i>添加`;
@@ -460,6 +540,9 @@
             selectedRow.classList.remove("bg-blue-100");
             selectedRow = null;
         }
+
+        // 移除表单焦点
+        document.activeElement.blur();
     }
 
     document.getElementById('coal-cancel-btn').addEventListener('click', resetCoalFormState);
@@ -467,12 +550,18 @@
     document.getElementById('coal-form').addEventListener('submit', (e) => {
         e.preventDefault();
 
+        // 包含新增的5个字段
         const coal = {
             id: editingId,
             name: document.getElementById('coal-name').value,
             calorific: parseFloat(document.getElementById('coal-calorific').value),
             ash: parseFloat(document.getElementById('coal-ash').value),
             sulfur: parseFloat(document.getElementById('coal-sulfur').value),
+            volatile: parseFloat(document.getElementById('coal-volatile').value), // 新增
+            recovery: parseFloat(document.getElementById('coal-recovery').value), // 新增
+            g_value: parseFloat(document.getElementById('coal-g_value').value),   // 新增
+            x_value: parseFloat(document.getElementById('coal-x_value').value),   // 新增
+            y_value: parseFloat(document.getElementById('coal-y_value').value),   // 新增
             price: parseFloat(document.getElementById('coal-price').value),
             short_transport: parseFloat(document.getElementById('coal-short-transport').value || 0),
             screening_fee: parseFloat(document.getElementById('coal-screening-fee').value || 0),
@@ -722,6 +811,29 @@
             }
         });
     }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        // 数字输入框
+        const numberInputs = document.querySelectorAll('input[type="number"]');
+        numberInputs.forEach(input => {
+            input.addEventListener('focus', function () {
+                setTimeout(() => this.select(), 10);
+            });
+            input.addEventListener('click', function () {
+                if (this === document.activeElement) {
+                    setTimeout(() => this.select(), 10);
+                }
+            });
+        });
+
+        // 文本输入框（可选）
+        const textInputs = document.querySelectorAll('input[type="text"]');
+        textInputs.forEach(input => {
+            input.addEventListener('focus', function () {
+                setTimeout(() => this.select(), 10);
+            });
+        });
+    });
 
     // 步长选择单选逻辑
     document.querySelectorAll('.step-checkbox').forEach(checkbox => {

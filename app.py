@@ -23,15 +23,6 @@ DB_CONFIG = {
     "database": "coal_db"
 }
 
-#
-# DB_CONFIG = {
-#     "host": "127.0.0.1",
-#     "port": 3309,  # ← 必须是整型
-#     "user": "coal",
-#     "password": "coal!@#$",
-#     "database": "coal_db"
-# }
-
 # ---------- 创建 MySQL 连接 ----------
 def get_connection():
     try:
@@ -91,6 +82,7 @@ def get_coals():
     try:
         conn = get_connection()
         cursor = conn.cursor()
+        # 查询包含新增的5个字段
         cursor.execute("SELECT * FROM raw_coals ORDER BY id ASC")
         data = cursor.fetchall()
         cursor.close()
@@ -103,38 +95,6 @@ def get_coals():
 
 
 # ---------- 添加 / 修改原煤 ----------
-# @app.route('/api/coals', methods=['POST'])
-# def save_coal():
-#     data = request.json
-#
-#     conn = get_connection()
-#     cursor = conn.cursor()
-#
-#     if data.get("id"):  # UPDATE
-#         cursor.execute("""
-#             UPDATE raw_coals
-#             SET name=%s, calorific=%s, ash=%s, sulfur=%s, price=%s, short_transport=%s,
-#                 screening_fee=%s, crushing_fee=%s
-#             WHERE id=%s
-#         """, (data["name"], data["calorific"], data["ash"], data["sulfur"],
-#               data["price"], data["short_transport"], data["screening_fee"],
-#               data["crushing_fee"], data["id"]))
-#     else:  # INSERT
-#         cursor.execute("""
-#             INSERT INTO raw_coals (name, calorific, ash, sulfur, price, short_transport,
-#                 screening_fee, crushing_fee)
-#             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-#         """, (data["name"], data["calorific"], data["ash"], data["sulfur"],
-#               data["price"], data["short_transport"], data["screening_fee"],
-#               data["crushing_fee"]))
-#
-#     conn.commit()
-#     conn.close()
-#     return jsonify({"success": True})
-
-
-# ---------- 删除原煤 ----------
-# 添加/修改原煤接口无需额外修改，Decimal会自动保留两位小数
 @app.route('/api/coals', methods=['POST'])
 def save_coal():
     data = request.json
