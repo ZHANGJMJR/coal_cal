@@ -22,6 +22,8 @@ DB_CONFIG = {
     "password": "rootroot",
     "database": "coal_db"
 }
+
+#
 # DB_CONFIG = {
 #     "host": "127.0.0.1",
 #     "port": 3309,  # ← 必须是整型
@@ -101,6 +103,38 @@ def get_coals():
 
 
 # ---------- 添加 / 修改原煤 ----------
+# @app.route('/api/coals', methods=['POST'])
+# def save_coal():
+#     data = request.json
+#
+#     conn = get_connection()
+#     cursor = conn.cursor()
+#
+#     if data.get("id"):  # UPDATE
+#         cursor.execute("""
+#             UPDATE raw_coals
+#             SET name=%s, calorific=%s, ash=%s, sulfur=%s, price=%s, short_transport=%s,
+#                 screening_fee=%s, crushing_fee=%s
+#             WHERE id=%s
+#         """, (data["name"], data["calorific"], data["ash"], data["sulfur"],
+#               data["price"], data["short_transport"], data["screening_fee"],
+#               data["crushing_fee"], data["id"]))
+#     else:  # INSERT
+#         cursor.execute("""
+#             INSERT INTO raw_coals (name, calorific, ash, sulfur, price, short_transport,
+#                 screening_fee, crushing_fee)
+#             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+#         """, (data["name"], data["calorific"], data["ash"], data["sulfur"],
+#               data["price"], data["short_transport"], data["screening_fee"],
+#               data["crushing_fee"]))
+#
+#     conn.commit()
+#     conn.close()
+#     return jsonify({"success": True})
+
+
+# ---------- 删除原煤 ----------
+# 添加/修改原煤接口无需额外修改，Decimal会自动保留两位小数
 @app.route('/api/coals', methods=['POST'])
 def save_coal():
     data = request.json
@@ -111,27 +145,31 @@ def save_coal():
     if data.get("id"):  # UPDATE
         cursor.execute("""
             UPDATE raw_coals
-            SET name=%s, calorific=%s, ash=%s, sulfur=%s, price=%s, short_transport=%s,
-                screening_fee=%s, crushing_fee=%s
+            SET name=%s, calorific=%s, ash=%s, sulfur=%s, volatile=%s, 
+                recovery=%s, g_value=%s, x_value=%s, y_value=%s, 
+                price=%s, short_transport=%s, screening_fee=%s, crushing_fee=%s
             WHERE id=%s
         """, (data["name"], data["calorific"], data["ash"], data["sulfur"],
-              data["price"], data["short_transport"], data["screening_fee"],
+              data["volatile"], data["recovery"], data["g_value"],
+              data["x_value"], data["y_value"], data["price"],
+              data["short_transport"], data["screening_fee"],
               data["crushing_fee"], data["id"]))
     else:  # INSERT
         cursor.execute("""
-            INSERT INTO raw_coals (name, calorific, ash, sulfur, price, short_transport,
-                screening_fee, crushing_fee)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO raw_coals (name, calorific, ash, sulfur, volatile, 
+                                  recovery, g_value, x_value, y_value, 
+                                  price, short_transport, screening_fee, crushing_fee)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (data["name"], data["calorific"], data["ash"], data["sulfur"],
-              data["price"], data["short_transport"], data["screening_fee"],
+              data["volatile"], data["recovery"], data["g_value"],
+              data["x_value"], data["y_value"], data["price"],
+              data["short_transport"], data["screening_fee"],
               data["crushing_fee"]))
 
     conn.commit()
     conn.close()
     return jsonify({"success": True})
 
-
-# ---------- 删除原煤 ----------
 @app.route('/api/coals/<int:coal_id>', methods=['DELETE'])
 def delete_coal(coal_id):
     try:
@@ -246,35 +284,42 @@ def calculate_blend():
 @app.route('/api/electric_blend', methods=['POST'])
 def electric_blend():
     """
-    电煤配比：满足热值 & 返回多种方案（最多 5 种）
-    支持用户自定义枚举步长（1%、5%、10%）
+    电煤配比：支持 1 / 2 / 3 种煤组合
+    步长枚举：1%、5%、10%
+    返回给前端的数据保证字段完整，不出现 undefined / NaN
     """
     try:
         target = request.json or {}
         target_calorific = float(target.get("calorific", 0))
         selected_coal_ids = target.get("selected_coal_ids", [])
 
-        # 获取用户选择的步长（默认10%）
-        step_size = int(target.get("step_size", 10))
-        if step_size not in [1, 5, 10]:
-            step_size = 10  # 容错处理
+        # 步长
+        step_sizes = target.get("step_sizes", [10])
+        if not isinstance(step_sizes, list) or len(step_sizes) == 0:
+            step_sizes = [10]
 
+        step_size = int(step_sizes[0])
+        if step_size not in [1, 5, 10]:
+            step_size = 10
+
+        # ---------------------------
+        # 从数据库读取原煤数据
+        # ---------------------------
         conn = get_connection()
         cursor = conn.cursor()
 
-        # 根据选中的原煤ID过滤查询
-        if selected_coal_ids and len(selected_coal_ids) > 0:
-            # 构造IN查询的占位符
+        if selected_coal_ids:
             placeholders = ', '.join(['%s'] * len(selected_coal_ids))
             cursor.execute(f"""
-                SELECT name, calorific, price, short_transport, screening_fee, crushing_fee
+                SELECT name, calorific, price, short_transport,
+                       screening_fee, crushing_fee
                 FROM raw_coals
                 WHERE id IN ({placeholders})
             """, tuple(selected_coal_ids))
         else:
-            # 未选择则查询全部
             cursor.execute("""
-                SELECT name, calorific, price, short_transport, screening_fee, crushing_fee
+                SELECT name, calorific, price, short_transport,
+                       screening_fee, crushing_fee
                 FROM raw_coals
             """)
 
@@ -285,36 +330,32 @@ def electric_blend():
         if not rows:
             return jsonify({"success": False, "message": "没有原煤数据"})
 
-        # 转换 Decimal 类型
         rows = convert_decimal_to_float(rows)
 
         # ---------------------------
-        #  数据准备
+        # 数据准备
         # ---------------------------
         n = len(rows)
         names = [r["name"] for r in rows]
         calorific = [float(r["calorific"]) for r in rows]
         price = [float(r["price"]) for r in rows]
         short = [float(r["short_transport"]) for r in rows]
-        screening = [float(r["screening_fee"]) for r in rows]  # 过筛费
-        crushing = [float(r["crushing_fee"]) for r in rows]  # 破碎费
+        screening = [float(r["screening_fee"]) for r in rows]
+        crushing = [float(r["crushing_fee"]) for r in rows]
         blending_fee = 1.8
 
-        # 单位成本 = 价格 + 短倒费 + 过筛费 + 破碎费 + 配煤费
-        unit_cost = [price[i] + short[i] + screening[i] + crushing[i] + blending_fee
-                     for i in range(n)]
-
-        # ---------------------------
-        #  第一次 LP：找到最优权重煤（用于缩小搜索范围）
-        # ---------------------------
-        A_ub = [
-            [-c for c in calorific]
+        unit_cost = [
+            price[i] + short[i] + screening[i] + crushing[i] + blending_fee
+            for i in range(n)
         ]
-        b_ub = [-target_calorific]
 
+        # ---------------------------
+        # 第一次 LP：用于排序，而不是筛选
+        # ---------------------------
+        A_ub = [[-c for c in calorific]]
+        b_ub = [-target_calorific]
         A_eq = [[1] * n]
         b_eq = [1]
-
         bounds = [(0, 1) for _ in range(n)]
 
         lp = linprog(unit_cost, A_ub=A_ub, b_ub=b_ub,
@@ -325,52 +366,125 @@ def electric_blend():
             return jsonify({"success": False, "message": "没有可行方案"})
 
         x = lp.x
-        # 按比例排序，取前 3 种（只取比例>0的）
-        top_idx = [i for i in range(n) if x[i] > 0.001]
-        top_idx.sort(key=lambda i: x[i], reverse=True)
-        top_idx = top_idx[:3]  # 最多取3种
-
-        if not top_idx:
-            return jsonify({"success": False, "message": "没有可行方案"})
 
         # ---------------------------
-        #  第二步：动态步长枚举
+        # 修复关键：按 LP 结果排序，确保能选到 3 种煤
         # ---------------------------
-        coals2 = []
-        for i in top_idx:
-            coals2.append({
-                "name": names[i],
-                "calorific": calorific[i],
-                "price": price[i],
-                "short": short[i],
-                "screening": screening[i],
-                "crushing": crushing[i],
-                "unit_cost": unit_cost[i]
-            })
+        sorted_idx = sorted(range(n), key=lambda i: x[i], reverse=True)
+        top_idx = sorted_idx[:3]  # 永远可以取到 1～3 种煤
+
+        # 构建参与枚举的煤数据
+        coals2 = [{
+            "name": names[i],
+            "calorific": calorific[i],
+            "price": price[i],
+            "short": short[i],
+            "screening": screening[i],
+            "crushing": crushing[i],
+            "unit_cost": unit_cost[i]
+        } for i in top_idx]
 
         k = len(coals2)
-
-        # 根据用户选择的步长生成枚举区间
         step_ratio = step_size / 100.0
         steps = [i * step_ratio for i in range(int(1 / step_ratio) + 1)]
 
         from itertools import product
-
         plans = []
 
-        for ratios in product(steps, repeat=k):
-            if abs(sum(ratios) - 1.0) > 0.001:  # 容错范围
-                continue
+        # ---------------------------
+        # 1. 单煤种
+        # ---------------------------
+        for c in coals2:
+            if c["calorific"] >= target_calorific:
+                plans.append({
+                    "type": "单煤种",
+                    "coal_count": 1,
+                    "mix_calorific": round(c["calorific"], 2),
+                    "mix_cost": round(c["unit_cost"], 2),
+                    "items": [{
+                        "name": c["name"],
+                        "ratio": 1.0,
+                        "calorific": c["calorific"],
+                        "price": c["price"],
+                        "short_transport": c["short"],
+                        "screening_fee": c["screening"],
+                        "crushing_fee": c["crushing"],
+                        "blending_fee": blending_fee,
+                        "unit_cost": c["unit_cost"]
+                    }]
+                })
 
-            mix_cal = sum(coals2[i]["calorific"] * ratios[i] for i in range(k))
-            if mix_cal < target_calorific:
-                continue
-
-            mix_cost = sum(coals2[i]["unit_cost"] * ratios[i] for i in range(k))
-
-            items = []
+        # ---------------------------
+        # 2. 双煤种组合
+        # ---------------------------
+        if k >= 2:
             for i in range(k):
-                if ratios[i] > step_ratio / 2:  # 根据步长动态调整过滤阈值
+                for j in range(i + 1, k):
+                    c1, c2 = coals2[i], coals2[j]
+                    for r1 in steps:
+                        r2 = 1 - r1
+                        if r2 < 0: continue
+
+                        mix_cal = c1["calorific"] * r1 + c2["calorific"] * r2
+                        if mix_cal < target_calorific:
+                            continue
+
+                        mix_cost = c1["unit_cost"] * r1 + c2["unit_cost"] * r2
+
+                        items = []
+                        if r1 > 0.001:
+                            items.append({
+                                "name": c1["name"],
+                                "ratio": round(r1, 4),
+                                "calorific": c1["calorific"],
+                                "price": c1["price"],
+                                "short_transport": c1["short"],
+                                "screening_fee": c1["screening"],
+                                "crushing_fee": c1["crushing"],
+                                "blending_fee": blending_fee,
+                                "unit_cost": c1["unit_cost"]
+                            })
+                        if r2 > 0.001:
+                            items.append({
+                                "name": c2["name"],
+                                "ratio": round(r2, 4),
+                                "calorific": c2["calorific"],
+                                "price": c2["price"],
+                                "short_transport": c2["short"],
+                                "screening_fee": c2["screening"],
+                                "crushing_fee": c2["crushing"],
+                                "blending_fee": blending_fee,
+                                "unit_cost": c2["unit_cost"]
+                            })
+
+                        plans.append({
+                            "type": "双煤种",
+                            "coal_count": 2,
+                            "mix_calorific": round(mix_cal, 2),
+                            "mix_cost": round(mix_cost, 2),
+                            "items": items
+                        })
+
+        # ---------------------------
+        # 3. 三煤种组合（真正的三煤组合）
+        # ---------------------------
+        if k >= 3:
+            for ratios in product(steps, repeat=3):
+                if abs(sum(ratios) - 1.0) > 0.001:
+                    continue
+
+                # 三个都大于 0 才算三煤方案
+                if sum(1 for r in ratios if r > 0.001) != 3:
+                    continue
+
+                mix_cal = sum(coals2[i]["calorific"] * ratios[i] for i in range(3))
+                if mix_cal < target_calorific:
+                    continue
+
+                mix_cost = sum(coals2[i]["unit_cost"] * ratios[i] for i in range(3))
+
+                items = []
+                for i in range(3):
                     items.append({
                         "name": coals2[i]["name"],
                         "ratio": round(ratios[i], 4),
@@ -383,31 +497,29 @@ def electric_blend():
                         "unit_cost": coals2[i]["unit_cost"]
                     })
 
-            plans.append({
-                "mix_calorific": round(mix_cal, 2),
-                "mix_cost": round(mix_cost, 2),
-                "items": items
-            })
+                plans.append({
+                    "type": "三煤种",
+                    "coal_count": 3,
+                    "mix_calorific": round(mix_cal, 2),
+                    "mix_cost": round(mix_cost, 2),
+                    "items": items
+                })
 
+        # ---------------------------
+        # 去重 + 取前 5 种成本最低方案
+        # ---------------------------
         if not plans:
             return jsonify({"success": False, "message": "没有满足热值的配比方案"})
 
-        # 去重处理（避免步长过小时产生重复方案）
+        seen = set()
         unique_plans = []
-        seen_costs = set()
-        for plan in sorted(plans, key=lambda p: p["mix_cost"]):
-            cost_key = round(plan["mix_cost"], 2)
-            if cost_key not in seen_costs:
-                seen_costs.add(cost_key)
-                unique_plans.append(plan)
+        for p in sorted(plans, key=lambda p: p["mix_cost"]):
+            key = round(p["mix_cost"], 2)
+            if key not in seen:
+                seen.add(key)
+                unique_plans.append(p)
 
-        # 按成本排序，最多返回前5种方案
-        unique_plans.sort(key=lambda p: p["mix_cost"])
-
-        return jsonify({
-            "success": True,
-            "plans": unique_plans[:5]
-        })
+        return jsonify({"success": True, "plans": unique_plans[:5]})
 
     except Exception as e:
         traceback.print_exc()
