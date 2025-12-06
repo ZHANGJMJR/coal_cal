@@ -4,37 +4,204 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>配煤程序</title>
+
     <link href="/static/css/tailwind.min.css" rel="stylesheet">
     <link href="/static/css/font-awesome.min.css" rel="stylesheet">
     <script src="/static/js/chart.umd.min.js"></script>
+
     <style>
-        /* 针对Edge浏览器的复选框样式 */
-        @supports (-ms-ime-align: auto) {
-            input[type="checkbox"]:checked {
-                accent-color: #2563eb; /* 蓝色 */
-            }
-        }
+        /* ================== 基础样式 ================== */
 
-        /* 通用复选框颜色设置（现代浏览器支持） */
         input[type="checkbox"] {
-            accent-color: #2563eb; /* 蓝色 */
+            accent-color: #2563eb;
         }
 
-        /* 表格行选中样式 */
         tr.bg-blue-100 {
             background-color: #eff6ff !important;
         }
 
-        /* 按钮文字不换行 */
         button {
             white-space: nowrap;
         }
 
-        /* 表单输入框焦点样式 */
         input:focus {
             border-color: #3b82f6;
             outline: none;
-            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, .2);
+        }
+
+        /* 横向滚动容器（配比可视化用） */
+        .coal-cards-container {
+            overflow-x: auto;
+            padding-bottom: 10px;
+        }
+
+        /* 原先用于渐变“水桶”的卡片，可保留备用 */
+        .coal-card {
+            transition: transform .15s ease;
+        }
+        .coal-card:hover {
+            transform: translateY(-2px);
+        }
+
+        .scale-mark {
+            position: absolute;
+            right: 12px;
+            width: 4px;
+            height: 1px;
+            background-color: #ccc;
+        }
+
+        /* 结果三列布局：标题 / 桶组 / 成本 + 按钮 */
+        .plan-grid {
+            display: grid;
+            grid-template-columns: 180px 1fr minmax(340px, auto);
+            gap: 12px;
+            align-items: center;
+        }
+
+        @media (max-width: 768px) {
+            .plan-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* 成本/热值整体左移一点，避免挤到按钮 */
+        .plan-metrics {
+            transform: translateX(-180px);
+        }
+
+        /* ================== 电煤方案按钮样式 ================== */
+
+        .plan-confirm-btn {
+            border: 2px solid #22c55e; /* 绿色边框 */
+            background: transparent;
+            color: #6b7280; /* 灰色字体 */
+            font-weight: bold;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            transition: 0.25s ease;
+            padding: 16px 18px;        /* 高度加倍 */
+            height: 64px;              /* 显式高度 */
+            font-size: 18px;
+        }
+
+        .plan-confirm-btn i {
+            color: #22c55e;
+            margin-right: 8px;
+        }
+
+        .plan-confirm-btn:hover {
+            background: #22c55e;
+            color: #ffffff;
+        }
+
+        .plan-confirm-btn:hover i {
+            color: #ffffff;
+        }
+
+        /* ================== 桶形煤卡（电煤配比用） ================== */
+
+        .coal-oil-tank-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .coal-oil-tank {
+            position: relative;
+            width: 120px;
+            height: 108px;
+            border-radius: 60px / 14px; /* 顶部椭圆 */
+            background: linear-gradient(to bottom, #f8fafc, #e2e8f0);
+            border: 3px solid #cbd5e1;
+            overflow: hidden;
+            box-shadow: inset 0 0 4px rgba(0,0,0,0.10);
+        }
+
+        /* 顶部内壁高光（内侧弧线效果） */
+        .coal-oil-tank::before {
+            content: "";
+            position: absolute;
+            top: 4px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 92%;
+            height: 14px;
+            background: radial-gradient(
+                ellipse at center,
+                rgba(0,0,0,0.18) 0%,
+                rgba(0,0,0,0.10) 45%,
+                rgba(0,0,0,0.00) 100%
+            );
+            border-radius: 50%;
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        /* 桶内水位填充 */
+        .coal-oil-fill {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: 0;
+            background: linear-gradient(to top, #aab1b8, #a9aeb7);
+            transition: height .35s ease-out;
+            z-index: 1;
+        }
+
+        /* 水面椭圆：跟着水位顶部走 */
+        .coal-oil-water-top {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 92%;
+            height: 12px;
+            bottom: 0;
+
+            background: radial-gradient(
+                ellipse at center,
+                rgba(180,185,190,0.35) 0%,
+                rgba(200,205,210,0.20) 45%,
+                rgba(220,225,230,0.10) 70%,
+                rgba(240,245,250,0) 100%
+            );
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 3;
+        }
+
+        /* 桶内文字：显示名称 + 比例 */
+        .coal-oil-content {
+            position: absolute;
+            top: 20px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            z-index: 4;
+            color: #111827;
+            padding: 0 4px;
+        }
+
+        .coal-oil-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 4px;
+        }
+
+        .coal-oil-pct {
+            font-size: 18px;
+            font-weight: 700;
+            color: #2563eb;
+        }
+
+        .coal-oil-calorific {
+            font-size: 13px;
+            color: #4b5563;
+            margin-top: 4px;
         }
     </style>
 </head>
@@ -43,7 +210,8 @@
 <header class="bg-blue-600 text-white p-4">
     <div class="container mx-auto">
         <h1 class="text-2xl md:text-3xl font-bold" style="display:flex; align-items:center;">
-            <img src="/static/logo.png" style="width:170px; height:auto; margin-right:16px;margin-left: 20px;"> 配煤程序
+            <img src="/static/logo.png" style="width:170px; height:auto; margin-right:16px;margin-left: 20px;">
+            配煤程序
         </h1>
     </div>
 </header>
@@ -108,12 +276,12 @@
                            class="w-full px-3 py-2 border border-gray-300 rounded-md">
                 </div>
                 <div>
-                    <label class="block text-gray-700 mb-1">Y值</label>
+                    <label class="block text-gray-700 mb-1">X值</label>
                     <input type="number" id="coal-x_value" step="0.01" required
                            class="w-full px-3 py-2 border border-gray-300 rounded-md">
                 </div>
                 <div>
-                    <label class="block text-gray-700 mb-1">X值</label>
+                    <label class="block text-gray-700 mb-1">Y值</label>
                     <input type="number" id="coal-y_value" step="0.01" required
                            class="w-full px-3 py-2 border border-gray-300 rounded-md">
                 </div>
@@ -294,7 +462,7 @@
             </form>
         </div>
 
-        <!-- 电煤多方案结果 -->
+        <!-- 电煤多方案结果（桶形展示） -->
         <div id="electric-result" class="bg-white rounded-lg shadow-md p-4 mt-6 hidden">
             <h2 class="text-xl font-semibold mb-4">电煤配比方案（按成本排序）</h2>
             <div id="electric-plan-list" class="space-y-4"></div>
@@ -329,555 +497,8 @@
     </div>
 </footer>
 
-<script>
-    // 标签页切换
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.tab-btn').forEach(b => {
-                b.classList.remove('border-blue-500', 'text-blue-600');
-                b.classList.add('border-transparent', 'text-gray-500');
-            });
-            document.querySelectorAll('.tab-panel').forEach(panel => {
-                panel.classList.add('hidden');
-            });
+<!-- 关键：所有 JS 移到 app.js -->
+<script src="/static/js/app.js"></script>
 
-            btn.classList.remove('border-transparent', 'text-gray-500');
-            btn.classList.add('border-blue-500', 'text-blue-600');
-
-            const panelId = btn.id.replace('tab-', 'panel-');
-            document.getElementById(panelId).classList.remove('hidden');
-        });
-    });
-
-    // 原煤选择相关变量
-    let selectedCoalIds = []; // 存储选中的原煤ID
-
-    // 加载原煤数据
-    let selectedRow = null;
-
-    function loadCoals() {
-        fetch('/api/coals')
-            .then(response => response.json())
-            .then(coals => {
-                const tableBody = document.getElementById('coal-table-body');
-                tableBody.innerHTML = '';
-
-                coals.forEach(coal => {
-                    const row = document.createElement('tr');
-                    row.setAttribute("data-id", coal.id);
-                    row.classList.add("cursor-pointer", "hover:bg-blue-50");
-
-                    // 保留两位小数显示
-                    const volatile = coal.volatile ? coal.volatile.toFixed(2) : '0.00';
-                    const recovery = coal.recovery ? coal.recovery.toFixed(2) : '0.00';
-                    const gValue = coal.g_value ? coal.g_value.toFixed(2) : '0.00';
-                    const xValue = coal.x_value ? coal.x_value.toFixed(2) : '0.00';
-                    const yValue = coal.y_value ? coal.y_value.toFixed(2) : '0.00';
-
-                    row.innerHTML = `
-                <td class="py-2 px-4 border">${coal.name}</td>
-                <td class="py-2 px-4 border">${coal.calorific}</td>
-                <td class="py-2 px-4 border">${coal.ash.toFixed(2)}%</td>
-                <td class="py-2 px-4 border">${coal.sulfur.toFixed(2)}%</td>
-                <td class="py-2 px-4 border">${volatile}%</td>
-                <td class="py-2 px-4 border">${recovery}%</td>
-                <td class="py-2 px-4 border">${gValue}</td>
-                <td class="py-2 px-4 border">${xValue}</td>
-                <td class="py-2 px-4 border">${yValue}</td>
-                <td class="py-2 px-4 border">${coal.price}</td>
-                <td class="py-2 px-4 border">${(coal.short_transport ?? 0).toFixed(2)}</td>
-                <td class="py-2 px-4 border">${(coal.screening_fee ?? 0).toFixed(2)}</td>
-                <td class="py-2 px-4 border">${(coal.crushing_fee ?? 0).toFixed(2)}</td>
-            `;
-
-                    row.onclick = () => {
-                        if (selectedRow) {
-                            selectedRow.classList.remove('bg-blue-100');
-                        }
-                        row.classList.add('bg-blue-100');
-                        selectedRow = row;
-                        editCoal(coal);
-                    };
-
-                    tableBody.appendChild(row);
-                });
-
-                loadCoalSelectionTable(coals);
-            });
-    }
-
-    // 加载原煤选择表格
-    function loadCoalSelectionTable(coals) {
-        const tableBody = document.getElementById('coal-select-table');
-        tableBody.innerHTML = '';
-
-        coals.forEach(coal => {
-            const row = document.createElement('tr');
-            const isSelected = selectedCoalIds.length === 0 || selectedCoalIds.includes(coal.id);
-
-            row.innerHTML = `
-                <td class="py-2 px-3 border-b text-center">
-                    <input type="checkbox" class="coal-checkbox" data-id="${coal.id}" ${isSelected ? 'checked' : ''}>
-                </td>
-                <td class="py-2 px-3 border">${coal.name}</td>
-                <td class="py-2 px-3 border">${coal.calorific}</td>
-                <td class="py-2 px-3 border">${coal.price}</td>
-            `;
-
-            tableBody.appendChild(row);
-        });
-    }
-
-    // 原煤选择模态框切换
-    document.getElementById('coal-select-btn').addEventListener('click', (e) => {
-        e.preventDefault();
-        const modal = document.getElementById('coal-select-modal');
-        modal.classList.toggle('hidden');
-    });
-
-    // 点击模态框外部关闭
-    document.addEventListener('click', (e) => {
-        const modal = document.getElementById('coal-select-modal');
-        const btn = document.getElementById('coal-select-btn');
-        if (!modal.contains(e.target) && !btn.contains(e.target)) {
-            modal.classList.add('hidden');
-        }
-    });
-
-    // 全选按钮
-    document.getElementById('select-all-coals').addEventListener('click', () => {
-        document.querySelectorAll('.coal-checkbox').forEach(checkbox => {
-            checkbox.checked = true;
-        });
-    });
-
-    // 清空按钮
-    document.getElementById('clear-all-coals').addEventListener('click', () => {
-        document.querySelectorAll('.coal-checkbox').forEach(checkbox => {
-            checkbox.checked = false;
-        });
-    });
-
-    // 确认选择按钮
-    document.getElementById('confirm-coal-selection').addEventListener('click', () => {
-        const checkboxes = document.querySelectorAll('.coal-checkbox:checked');
-        selectedCoalIds = Array.from(checkboxes).map(cb => parseInt(cb.dataset.id));
-
-        const textElement = document.getElementById('selected-coals-text');
-        if (selectedCoalIds.length === 0) {
-            textElement.textContent = '未选择原煤';
-        } else if (document.querySelectorAll('.coal-checkbox').length === selectedCoalIds.length) {
-            textElement.textContent = '全部原煤';
-        } else {
-            textElement.textContent = `${selectedCoalIds.length}种原煤`;
-        }
-
-        document.getElementById('coal-select-modal').classList.add('hidden');
-    });
-
-    let editingId = null;
-
-    function editCoal(coal) {
-        editingId = coal.id;
-
-        // 确保所有字段都被正确赋值，包括新增字段
-        document.getElementById('coal-name').value = coal.name || '';
-        document.getElementById('coal-calorific').value = coal.calorific ? coal.calorific.toFixed(1) : '';
-        document.getElementById('coal-ash').value = coal.ash ? coal.ash.toFixed(2) : '';
-        document.getElementById('coal-sulfur').value = coal.sulfur ? coal.sulfur.toFixed(2) : '';
-
-        // 新增字段的赋值
-        document.getElementById('coal-volatile').value = (coal.volatile !== undefined) ? coal.volatile.toFixed(2) : '';
-        document.getElementById('coal-recovery').value = (coal.recovery !== undefined) ? coal.recovery.toFixed(2) : '';
-        document.getElementById('coal-g_value').value = (coal.g_value !== undefined) ? coal.g_value.toFixed(2) : '';
-        document.getElementById('coal-x_value').value = (coal.x_value !== undefined) ? coal.x_value.toFixed(2) : '';
-        document.getElementById('coal-y_value').value = (coal.y_value !== undefined) ? coal.y_value.toFixed(2) : '';
-
-        document.getElementById('coal-price').value = coal.price ? coal.price.toFixed(1) : '';
-        document.getElementById('coal-short-transport').value = coal.short_transport ? coal.short_transport.toFixed(2) : '0.00';
-        document.getElementById('coal-screening-fee').value = coal.screening_fee ? coal.screening_fee.toFixed(2) : '0.00';
-        document.getElementById('coal-crushing-fee').value = coal.crushing_fee ? coal.crushing_fee.toFixed(2) : '0.00';
-
-        // 更新按钮状态
-        const submitBtn = document.getElementById("coal-submit-btn");
-        submitBtn.innerHTML = `<i class="fa fa-save mr-1"></i>保存修改`;
-        submitBtn.classList.remove("bg-blue-600");
-        submitBtn.classList.add("bg-green-600");
-
-        const delBtn = document.getElementById("coal-delete-btn");
-        if (delBtn) delBtn.classList.remove("hidden");
-
-        const cancelBtn = document.getElementById("coal-cancel-btn");
-        if (cancelBtn) cancelBtn.classList.remove("hidden");
-
-        // 滚动到表单顶部
-        document.getElementById('coal-form').scrollIntoView({behavior: 'smooth'});
-    }
-
-    function resetCoalFormState() {
-        editingId = null;
-        document.getElementById('coal-form').reset();
-        document.getElementById('coal-short-transport').value = 0;
-        document.getElementById('coal-screening-fee').value = 0;
-        document.getElementById('coal-crushing-fee').value = 0;
-        document.getElementById('coal-volatile').value = '';
-        document.getElementById('coal-recovery').value = '';
-        document.getElementById('coal-g_value').value = '';
-        document.getElementById('coal-x_value').value = '';
-        document.getElementById('coal-y_value').value = '';
-
-        const submitBtn = document.getElementById("coal-submit-btn");
-        submitBtn.innerHTML = `<i class="fa fa-plus mr-1"></i>添加`;
-        submitBtn.classList.add("bg-blue-600");
-        submitBtn.classList.remove("bg-green-600");
-
-        const delBtn = document.getElementById("coal-delete-btn");
-        const cancelBtn = document.getElementById("coal-cancel-btn");
-        if (delBtn) delBtn.classList.add("hidden");
-        if (cancelBtn) cancelBtn.classList.add("hidden");
-
-        if (selectedRow) {
-            selectedRow.classList.remove("bg-blue-100");
-            selectedRow = null;
-        }
-
-        // 移除表单焦点
-        document.activeElement.blur();
-    }
-
-    document.getElementById('coal-cancel-btn').addEventListener('click', resetCoalFormState);
-
-    document.getElementById('coal-form').addEventListener('submit', (e) => {
-        e.preventDefault();
-
-        // 包含新增的5个字段
-        const coal = {
-            id: editingId,
-            name: document.getElementById('coal-name').value,
-            calorific: parseFloat(document.getElementById('coal-calorific').value),
-            ash: parseFloat(document.getElementById('coal-ash').value),
-            sulfur: parseFloat(document.getElementById('coal-sulfur').value),
-            volatile: parseFloat(document.getElementById('coal-volatile').value), // 新增
-            recovery: parseFloat(document.getElementById('coal-recovery').value), // 新增
-            g_value: parseFloat(document.getElementById('coal-g_value').value),   // 新增
-            x_value: parseFloat(document.getElementById('coal-x_value').value),   // 新增
-            y_value: parseFloat(document.getElementById('coal-y_value').value),   // 新增
-            price: parseFloat(document.getElementById('coal-price').value),
-            short_transport: parseFloat(document.getElementById('coal-short-transport').value || 0),
-            screening_fee: parseFloat(document.getElementById('coal-screening-fee').value || 0),
-            crushing_fee: parseFloat(document.getElementById('coal-crushing-fee').value || 0)
-        };
-
-        fetch('/api/coals', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(coal)
-        })
-            .then(res => res.json())
-            .then(data => {
-                alert(editingId ? '修改成功！' : '添加成功！');
-                resetCoalFormState();
-                loadCoals();
-            });
-    });
-
-    document.getElementById('blend-form').addEventListener('submit', (e) => {
-        e.preventDefault();
-
-        const target = {
-            min_calorific: parseFloat(document.getElementById('target-calorific').value),
-            max_ash: parseFloat(document.getElementById('target-ash').value),
-            max_sulfur: parseFloat(document.getElementById('target-sulfur').value)
-        };
-
-        fetch('/api/blend', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(target)
-        })
-            .then(response => response.json())
-            .then(result => {
-                if (!result.success) {
-                    alert(result.message);
-                    return;
-                }
-
-                document.getElementById('tab-result').click();
-
-                const indicators = document.getElementById('result-indicators');
-                const taxCost = (result.指标.单位成本 * 1.13).toFixed(2);
-                indicators.innerHTML = `
-                    <div>
-                        <p class="text-gray-600">发热量</p>
-                        <p class="text-2xl font-bold">${result.指标.发热量} 大卡</p>
-                    </div>
-                    <div>
-                        <p class="text-gray-600">灰分</p>
-                        <p class="text-2xl font-bold">${result.指标.灰分} %</p>
-                    </div>
-                    <div>
-                        <p class="text-gray-600">硫分</p>
-                        <p class="text-2xl font-bold">${result.指标.硫分} %</p>
-                    </div>
-                    <div>
-                        <p class="text-gray-600">单位成本（不含税）</p>
-                        <p class="text-2xl font-bold">${result.指标.单位成本} 元/吨</p>
-                    </div>
-                    <div>
-                        <p class="text-gray-600">单位成本（含税价）</p>
-                        <p class="text-2xl font-bold text-red-600">${taxCost} 元/吨</p>
-                    </div>
-                `;
-
-                const ratioTable = document.getElementById('ratio-table');
-                ratioTable.innerHTML = `
-                    <table class="min-w-full">
-                        <thead>
-                            <tr class="bg-gray-100">
-                                <th class="py-2 px-4 border-b">原煤名称</th>
-                                <th class="py-2 px-4 border-b">配煤比例</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${result.ratio.map(item => `
-                                <tr>
-                                    <td class="py-2 px-4 border-b">${item.name}</td>
-                                    <td class="py-2 px-4 border-b">${Math.round(item.ratio)}%</td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                `;
-
-                const ctx = document.getElementById('ratio-chart').getContext('2d');
-                new Chart(ctx, {
-                    type: 'pie',
-                    data: {
-                        labels: result.ratio.map(item => item.name),
-                        datasets: [{
-                            data: result.ratio.map(item => item.ratio),
-                            backgroundColor: [
-                                '#3e95cd', '#8e5ea2', '#3cba9f',
-                                '#e8c3b9', '#c45850', '#ffcc00'
-                            ]
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        plugins: {
-                            legend: {
-                                position: 'right'
-                            }
-                        }
-                    }
-                });
-            });
-    });
-
-    // 电煤配比计算表单提交
-    const electricForm = document.getElementById('electric-form');
-    if (electricForm) {
-        electricForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            // 获取选中的步长值
-            const selectedSteps = Array.from(document.querySelectorAll('.step-checkbox:checked'))
-                .map(cb => parseInt(cb.value));
-
-            // 默认使用10%步长
-            const stepSizes = selectedSteps.length > 0 ? selectedSteps : [10];
-
-            const target = {
-                calorific: parseFloat(document.getElementById('electric-calorific').value),
-                selected_coal_ids: selectedCoalIds,
-                step_sizes: stepSizes
-            };
-
-            // 显示加载状态
-            const resultPanel = document.getElementById("electric-result");
-            const listDiv = document.getElementById("electric-plan-list");
-            listDiv.innerHTML = '<div class="text-center py-4">计算中...</div>';
-            resultPanel.classList.remove("hidden");
-
-            try {
-                const response = await fetch('/api/electric_blend', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(target)
-                });
-
-                const result = await response.json();
-
-                if (!result.success) {
-                    listDiv.innerHTML = `<div class="text-center py-4 text-red-500">${result.message || '电煤配比计算失败'}</div>`;
-                    return;
-                }
-
-                const plans = result.plans;
-                listDiv.innerHTML = "";
-
-                if (plans.length === 0) {
-                    listDiv.innerHTML = '<div class="text-center py-4 text-gray-500">暂无满足条件的方案</div>';
-                    return;
-                }
-
-                plans.forEach((plan, index) => {
-                    const isBest = index === 0;
-                    const taxCost = (plan.mix_cost * 1.13).toFixed(2);
-
-                    let card = document.createElement("div");
-                    card.className = "border border-gray-300 rounded-lg p-4";
-
-                    card.innerHTML = `
-                        <div class="flex justify-between items-center">
-                            <div class="font-semibold text-lg">
-                                电煤方案 ${index + 1}
-                                ${isBest ? '<span class="text-red-600">(最优)</span>' : ''}
-                            </div>
-                            <div class="text-right text-gray-700">
-                                <div>成本（不含税）：<span class="font-bold text-blue-600">${plan.mix_cost} 元/吨</span></div>
-                                <div>成本（含税价）：<span class="font-bold text-red-600">${taxCost} 元/吨</span></div>
-                                <div>热值：<span class="font-bold">${plan.mix_calorific} kcal</span></div>
-                            </div>
-                        </div>
-                    `;
-
-                    let detailBox = document.createElement("div");
-                    detailBox.className = "hidden mt-3 bg-gray-50 p-3 rounded";
-                    let itemsHTML = plan.items.map(item => {
-                        const unitCost = item.price + item.short_transport + item.screening_fee + item.crushing_fee + 1.8;
-                        const subtotal = unitCost * item.ratio;
-                        const taxSubtotal = (subtotal * 1.13).toFixed(2);
-                        const ratioPercent = Math.round(item.ratio * 100);
-
-                        return `
-                            <div class="py-2 text-sm border-b last:border-0">
-                                <div class="flex justify-between">
-                                    <span class="font-medium">${item.name}</span>
-                                    <span>${ratioPercent}%</span>
-                                </div>
-
-                                <div class="text-gray-600 mt-1">
-                                    🔥 热值：<span class="font-semibold">${item.calorific}</span> 大卡
-                                </div>
-
-                                <div class="text-gray-700 mt-1 flex justify-between">
-                                    <span>成本公式：</span>
-                                    <span>
-                                        (${item.price} + ${item.short_transport} + ${item.screening_fee} + ${item.crushing_fee} + 1.8)
-                                        × ${item.ratio.toFixed(4)}
-                                        = <strong>${subtotal.toFixed(2)}</strong>
-                                    </span>
-                                </div>
-                                <div class="text-gray-700 mt-1 flex justify-between">
-                                    <span>含税成本：</span>
-                                    <span class="text-red-600 font-medium">${taxSubtotal} 元/吨</span>
-                                </div>
-                            </div>
-                        `;
-                    }).join("");
-
-                    detailBox.innerHTML = `
-                        ${itemsHTML}
-                        <div class="border-t pt-2 mt-2 font-bold flex justify-between">
-                            <span>总成本（不含税）：</span>
-                            <span>${plan.mix_cost} 元/吨</span>
-                        </div>
-                        <div class="font-bold flex justify-between text-red-600">
-                            <span>总成本（含税价）：</span>
-                            <span>${taxCost} 元/吨</span>
-                        </div>
-                    `;
-
-                    let btn = document.createElement("button");
-                    btn.className = "mt-2 text-blue-600 underline text-sm hover:text-blue-800";
-                    btn.textContent = "展开详情 ▼";
-
-                    btn.onclick = () => {
-                        detailBox.classList.toggle("hidden");
-                        btn.textContent = detailBox.classList.contains("hidden")
-                            ? "展开详情 ▼"
-                            : "收起详情 ▲";
-                    };
-
-                    card.appendChild(btn);
-                    card.appendChild(detailBox);
-
-                    listDiv.appendChild(card);
-                });
-
-            } catch (error) {
-                listDiv.innerHTML = `<div class="text-center py-4 text-red-500">计算失败：${error.message}</div>`;
-            }
-        });
-    }
-
-    document.addEventListener('DOMContentLoaded', function () {
-        // 数字输入框
-        const numberInputs = document.querySelectorAll('input[type="number"]');
-        numberInputs.forEach(input => {
-            input.addEventListener('focus', function () {
-                setTimeout(() => this.select(), 10);
-            });
-            input.addEventListener('click', function () {
-                if (this === document.activeElement) {
-                    setTimeout(() => this.select(), 10);
-                }
-            });
-        });
-
-        // 文本输入框（可选）
-        const textInputs = document.querySelectorAll('input[type="text"]');
-        textInputs.forEach(input => {
-            input.addEventListener('focus', function () {
-                setTimeout(() => this.select(), 10);
-            });
-        });
-    });
-
-    // 步长选择单选逻辑
-    document.querySelectorAll('.step-checkbox').forEach(checkbox => {
-        checkbox.addEventListener('change', function () {
-            if (this.checked) {
-                document.querySelectorAll('.step-checkbox').forEach(cb => {
-                    if (cb !== this) cb.checked = false;
-                });
-            }
-        });
-    });
-
-    const coalDeleteBtn = document.getElementById('coal-delete-btn');
-    if (coalDeleteBtn) {
-        coalDeleteBtn.addEventListener('click', () => {
-            if (!editingId) {
-                alert('请先在原煤列表中点击选择一条要删除的原煤。');
-                return;
-            }
-
-            if (!confirm('确定要删除该原煤吗？删除后不可恢复！')) {
-                return;
-            }
-
-            fetch(`/api/coals/${editingId}`, {
-                method: 'DELETE'
-            })
-                .then(res => res.json())
-                .then(data => {
-                    if (!data.success) {
-                        alert(data.message || '删除失败');
-                        return;
-                    }
-
-                    alert('删除成功！');
-                    resetCoalFormState();
-                    loadCoals();
-                });
-        });
-    }
-
-    window.onload = () => {
-        loadCoals();
-    };
-</script>
 </body>
 </html>
