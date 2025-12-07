@@ -443,6 +443,9 @@ def electric_blend():
 
                 mix_cost = sum(coals2[i]["unit_cost"] * ratios[i] for i in range(3))
 
+                # ---------------------------
+                # 构建 items（参与配比的煤）
+                # ---------------------------
                 items = []
                 for i in range(3):
                     items.append({
@@ -457,14 +460,70 @@ def electric_blend():
                         "unit_cost": coals2[i]["unit_cost"]
                     })
 
+                # ---------------------------
+                # ★ 正确构建 all_coals（包含所有煤 + ratio=0）
+                # rows = dict 列表，所以必须用 row["字段"]
+                # ---------------------------
+                all_coals_list = []
+                for r in rows:
+                    all_coals_list.append({
+                        "name": r["name"],
+                        "calorific": float(r["calorific"]),
+                        "price": float(r["price"]),
+                        "short_transport": float(r["short_transport"]),
+                        "screening_fee": float(r["screening_fee"]),
+                        "crushing_fee": float(r["crushing_fee"]),
+                        "ratio": 0.0  # 默认 0
+                    })
+
+                # ---------------------------
+                # 把参与配比的比例写回 all_coals
+                # ---------------------------
+                ratio_map = {item["name"]: item["ratio"] for item in items}
+
+                for c in all_coals_list:
+                    if c["name"] in ratio_map:
+                        c["ratio"] = ratio_map[c["name"]]
+
+                # ---------------------------
+                # 添加方案
+                # ---------------------------
                 plans.append({
                     "type": "三煤种",
                     "coal_count": 3,
+                    "items": items,
+                    "all_coals": all_coals_list,  # ★前端完整显示
                     "mix_calorific": round(mix_cal, 2),
-                    "mix_cost": round(mix_cost, 2),
-                    "items": items
+                    "mix_cost": round(mix_cost, 2)
                 })
 
+        # ---------------------------
+        # ★修复：给所有方案补充 all_coals 字段，避免前端 undefined
+        # ---------------------------
+        full_all_coals = [
+            {
+                "name": r["name"],
+                "calorific": float(r["calorific"]),
+                "price": float(r["price"]),
+                "short_transport": float(r["short_transport"]),
+                "screening_fee": float(r["screening_fee"]),
+                "crushing_fee": float(r["crushing_fee"]),
+                "ratio": 0.0
+            }
+            for r in rows
+        ]
+
+        for p in plans:
+            # 如果没有 all_coals，则补上
+            if "all_coals" not in p:
+                p["all_coals"] = full_all_coals.copy()
+
+            # 将 items 中的实际比例写入 all_coals
+            ratio_map = {item["name"]: item["ratio"] for item in p["items"]}
+
+            for c in p["all_coals"]:
+                if c["name"] in ratio_map:
+                    c["ratio"] = ratio_map[c["name"]]
         # ---------------------------
         # 去重 + 取前 5 种成本最低方案
         # ---------------------------

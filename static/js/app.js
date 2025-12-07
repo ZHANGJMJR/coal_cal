@@ -57,9 +57,9 @@ function loadCoals() {
 
                     const volatile = coal.volatile ? coal.volatile.toFixed(2) : '0.00';
                     const recovery = coal.recovery ? coal.recovery.toFixed(2) : '0.00';
-                    const gValue   = coal.g_value ? coal.g_value.toFixed(2) : '0.00';
-                    const xValue   = coal.x_value ? coal.x_value.toFixed(2) : '0.00';
-                    const yValue   = coal.y_value ? coal.y_value.toFixed(2) : '0.00';
+                    const gValue = coal.g_value ? coal.g_value.toFixed(2) : '0.00';
+                    const xValue = coal.x_value ? coal.x_value.toFixed(2) : '0.00';
+                    const yValue = coal.y_value ? coal.y_value.toFixed(2) : '0.00';
 
                     row.innerHTML = `
                         <td class="py-2 px-4 border">${coal.name}</td>
@@ -406,7 +406,7 @@ if (blendForm) {
                     },
                     options: {
                         responsive: true,
-                        plugins: { legend: { position: 'right' } }
+                        plugins: {legend: {position: 'right'}}
                     }
                 });
             });
@@ -448,6 +448,7 @@ function updateWaterLevel(tankEl, ratio) {
 
     waterTop.style.bottom = (waterHeight - 8) + "px";
 }
+
 // =============================
 // 电煤配比表单提交（/api/electric_blend）
 // =============================
@@ -540,10 +541,10 @@ function renderElectricPlans(plans) {
                 <div class="flex items-center">
                     <span class="text-xl font-bold">电煤方案 ${index + 1}</span>
                     ${
-                        isBest
-                            ? `<span class="ml-2 px-2 py-1 bg-red-100 text-red-600 text-sm rounded">最低成本</span>`
-                            : ""
-                    }
+            isBest
+                ? `<span class="ml-2 px-2 py-1 bg-red-100 text-red-600 text-sm rounded">最低成本</span>`
+                : ""
+        }
                 </div>
 
                 <!-- 中列：桶形煤卡 -->
@@ -574,7 +575,7 @@ function renderElectricPlans(plans) {
 
                     <button class="plan-confirm-btn">
                         <i class="fa fa-check"></i>
-                        <span>确定使用该方案</span>
+                        <span class="text-base">确定使用该方案</span>
                     </button>
 
                 </div>
@@ -584,18 +585,62 @@ function renderElectricPlans(plans) {
         // 详情部分
         const detail = document.createElement("div");
         detail.className = "hidden bg-gray-50 border border-gray-200 rounded-lg p-4 mt-4";
-        detail.innerHTML = buildDetailTable(plan);
+
+        /**
+         * 把 plan.items 里的真实配比，合并回 all_coals
+         * - 有配比的煤：ratio > 0
+         * - 没用到的煤：ratio = 0
+         */
+        const allCoalsEnriched = (plan.all_coals || []).map(c => {
+            const used = (plan.items || []).find(it => it.name === c.name);
+            const ratio = used ? used.ratio : 0;   // ★ 只用各自煤种的 ratio
+
+            const blendingFee = c.blending_fee ?? 1.8;
+            const unitCost =
+                c.price +
+                c.short_transport +
+                c.screening_fee +
+                c.crushing_fee +
+                blendingFee;
+
+            return {
+                ...c,
+                ratio,
+                blending_fee: blendingFee,
+                unit_cost: unitCost
+            };
+        });
+
+        // 用新的 all_coals 调用详情表
+        detail.innerHTML = buildDetailTable({
+            ...plan,
+            all_coals: allCoalsEnriched
+        });
 
         const toggle = document.createElement("button");
-        toggle.className = "text-blue-600 hover:text-blue-800 text-sm font-semibold mt-3";
-        toggle.innerHTML = "▼ 展开详情";
+        toggle.className = "detail-toggle-btn";
 
+        // 初始（未展开）
+        toggle.innerHTML = '<i class="fa fa-chevron-down"></i> 展开详情';
+
+        // 点击事件
         toggle.onclick = () => {
+            const isHidden = detail.classList.contains("hidden");
+
+            // 切换显示
             detail.classList.toggle("hidden");
-            toggle.innerHTML = detail.classList.contains("hidden")
-                ? "▼ 展开详情"
-                : "▲ 收起详情";
+
+            if (isHidden) {
+                // 展开状态
+                toggle.classList.add("expanded");
+                toggle.innerHTML = '<i class="fa fa-chevron-down"></i> 收起详情';
+            } else {
+                // 收起状态
+                toggle.classList.remove("expanded");
+                toggle.innerHTML = '<i class="fa fa-chevron-down"></i> 展开详情';
+            }
         };
+
 
         card.appendChild(toggle);
         card.appendChild(detail);
@@ -613,7 +658,98 @@ function renderElectricPlans(plans) {
 // =============================
 // 配比详情表格
 // =============================
+// -------------------------------
+// 方案详情表格（包含：所有煤种 + 合计公式）
+// -------------------------------
 function buildDetailTable(plan) {
+    const blendingFee = 1.8;
+
+    // 后端传来的所有煤种（含没参与配比的）
+    const allCoals = plan.all_coals || [];
+
+    // 把本方案里真正参与配比的 items 做一个 map（按 name）
+    const itemMap = new Map(plan.items.map(it => [it.name, it]));
+
+    // 把所有煤种都列出来，如果没参与配比，比例=0
+    const enriched = allCoals.map(c => {
+        const item = itemMap.get(c.name);
+        const ratio = item ? item.ratio : 0; // 没配比的就是 0
+        const unitCost =
+            c.price +
+            c.short_transport +
+            c.screening_fee +
+            c.crushing_fee +
+            blendingFee;
+        const costContribution = unitCost * ratio;
+
+        return {
+            name: c.name,
+            calorific: c.calorific,
+            price: c.price,
+            short_transport: c.short_transport,
+            screening_fee: c.screening_fee,
+            crushing_fee: c.crushing_fee,
+            ratio,
+            unit_cost: unitCost,
+            cost_contribution: costContribution,
+        };
+    });
+
+    // ---- 各类合计 ----
+    const totalCal = enriched
+        .reduce((s, c) => s + c.calorific * c.ratio, 0)
+        .toFixed(0);
+
+    const totalCost = enriched.reduce(
+        (s, c) => s + c.cost_contribution,
+        0
+    );
+
+    const pricePart = enriched.reduce(
+        (s, c) => s + c.price * c.ratio,
+        0
+    );
+    const shortPart = enriched.reduce(
+        (s, c) => s + c.short_transport * c.ratio,
+        0
+    );
+    const screenPart = enriched.reduce(
+        (s, c) => s + c.screening_fee * c.ratio,
+        0
+    );
+    const crushPart = enriched.reduce(
+        (s, c) => s + c.crushing_fee * c.ratio,
+        0
+    );
+    const blendPart = enriched.some(c => c.ratio > 0) ? blendingFee : 0;
+
+    const weightedUnitCost =
+        pricePart + shortPart + screenPart + crushPart + blendPart;
+
+    // ---- 合计行里的两条公式文本 ----
+    // ① 单位成本拆分（单价 + 各项费用 = 单位成本）
+    const unitFormula =
+        `单位成本拆分：` +
+        `${pricePart.toFixed(2)} + ` +
+        `${shortPart.toFixed(2)} + ` +
+        `${screenPart.toFixed(2)} + ` +
+        `${crushPart.toFixed(2)} + ` +
+        `${blendPart.toFixed(2)} = ` +
+        `${weightedUnitCost.toFixed(2)}`;
+
+    // ② 配比后成本（80%×172.80 + 20%×501.80 = 238.60）
+    const ratioFormulaParts = enriched
+        .filter(c => c.ratio > 0.0001)
+        .map(
+            c =>
+                `${(c.ratio * 100).toFixed(0)}% × ${c.unit_cost.toFixed(2)}`
+        );
+    const ratioFormula =
+        `配比后成本：` +
+        `${ratioFormulaParts.join(" + ")} = ` +
+        `${totalCost.toFixed(2)}`;
+
+    // ---- 构造表格 HTML ----
     return `
         <h3 class="font-semibold mb-2">配比详情</h3>
         <table class="min-w-full text-sm bg-white rounded shadow">
@@ -621,29 +757,123 @@ function buildDetailTable(plan) {
                 <tr class="bg-gray-100">
                     <th class="border px-3 py-2 text-left">煤种</th>
                     <th class="border px-3 py-2 text-right">比例</th>
-                    <th class="border px-3 py-2 text-right">热值贡献</th>
-                    <th class="border px-3 py-2 text-right">成本贡献</th>
+                    <th class="border px-3 py-2 text-right">热值</th>
+                    <th class="border px-3 py-2 text-right">单价</th>
+                    <th class="border px-3 py-2 text-right">短倒费</th>
+                    <th class="border px-3 py-2 text-right">过筛费</th>
+                    <th class="border px-3 py-2 text-right">破碎费</th>
+                    <th class="border px-3 py-2 text-right">附加(1.8)</th>
+                    <th class="border px-3 py-2 text-right">单位成本</th>
+                    <th class="border px-3 py-2 text-right">配比后成本</th>
                 </tr>
             </thead>
             <tbody>
-                ${plan.items.map(item => {
-                    const pct = Math.round(item.ratio * 100);
-                    const heat = Math.round(item.calorific * item.ratio);
-                    const cost = Math.round(
-                        (item.price + item.short_transport + item.screening_fee + item.crushing_fee + 1.8) * item.ratio
-                    );
-                    return `
-                        <tr>
-                            <td class="border px-3 py-2">${item.name}</td>
-                            <td class="border px-3 py-2 text-right">${pct}%</td>
-                            <td class="border px-3 py-2 text-right">${heat}</td>
-                            <td class="border px-3 py-2 text-right">${cost}</td>
+                ${enriched
+                    .map(c => {
+                        const pct =
+                            c.ratio > 0.0001
+                                ? `${Math.round(c.ratio * 100)}%`
+                                : "—";
+                        const contribution =
+                            c.ratio > 0.0001
+                                ? c.cost_contribution.toFixed(2)
+                                : "0.00";
+
+                        return `
+                        <tr class="${c.ratio > 0.0001 ? "" : "text-gray-400"}">
+                            <td class="border px-3 py-2">${c.name}</td>
+                            <td class="border px-3 py-2 text-right">${pct}</td>
+                            <td class="border px-3 py-2 text-right">${c.calorific}</td>
+                            <td class="border px-3 py-2 text-right">${c.price.toFixed(2)}</td>
+                            <td class="border px-3 py-2 text-right">${c.short_transport.toFixed(2)}</td>
+                            <td class="border px-3 py-2 text-right">${c.screening_fee.toFixed(2)}</td>
+                            <td class="border px-3 py-2 text-right">${c.crushing_fee.toFixed(2)}</td>
+                            <td class="border px-3 py-2 text-right">${blendingFee.toFixed(2)}</td>
+                            <td class="border px-3 py-2 text-right">${c.unit_cost.toFixed(2)}</td>
+                            <td class="border px-3 py-2 text-right">${contribution}</td>
                         </tr>`;
-                }).join("")}
+                    })
+                    .join("")}
             </tbody>
+            <tfoot class="bg-gray-100 font-bold">
+                <tr>
+                    <td class="border px-3 py-2">合计</td>
+                    <td class="border px-3 py-2 text-right"></td>
+                    <td class="border px-3 py-2 text-right">${totalCal}</td>
+            
+                    <!-- 合并 6 列，显示计算公式 -->
+                    <td class="border px-3 py-2 text-center text-xs md:text-sm" colspan="6">
+            
+                        <!-- 组合公式（无0项） -->
+                        ${
+                            enriched
+                            .filter(c => c.ratio > 0.0001)
+                            .map(c => {
+            
+                                const parts = [];
+            
+                                if (c.price !== 0) parts.push(c.price.toFixed(2));
+                                if (c.short_transport !== 0) parts.push(c.short_transport.toFixed(2));
+                                if (c.screening_fee !== 0) parts.push(c.screening_fee.toFixed(2));
+                                if (c.crushing_fee !== 0) parts.push(c.crushing_fee.toFixed(2));
+                                if (blendingFee !== 0) parts.push(blendingFee.toFixed(2));
+            
+                                if (parts.length === 0) parts.push(c.price.toFixed(2));
+            
+                                const pct = (c.ratio * 100).toFixed(0) + "%";
+            
+                                return `(${parts.join(" + ")})*${pct}`;
+                            })
+                            .join(" + ")
+                        }
+            
+                        <!-- 不含税蓝色 + 含税红色 -->
+                        = <span class="text-blue-600 font-bold text-lg">${Math.round(totalCost)}</span>
+                        （含13%增值税：
+                            <span class="text-red-600 font-bold text-lg">${Math.round((totalCost * 1.13))}</span>
+                        ）
+                    </td>
+            
+                    <td class="border px-3 py-2 text-right text-blue-600 font-bold text-lg">
+                        ${Math.round(totalCost)}
+                    </td>
+                </tr>
+            </tfoot>       
         </table>
     `;
 }
+
+// function buildDetailTable(plan) {
+//     return `
+//         <h3 class="font-semibold mb-2">配比详情</h3>
+//         <table class="min-w-full text-sm bg-white rounded shadow">
+//             <thead>
+//                 <tr class="bg-gray-100">
+//                     <th class="border px-3 py-2 text-left">煤种</th>
+//                     <th class="border px-3 py-2 text-right">比例</th>
+//                     <th class="border px-3 py-2 text-right">热值贡献</th>
+//                     <th class="border px-3 py-2 text-right">成本贡献</th>
+//                 </tr>
+//             </thead>
+//             <tbody>
+//                 ${plan.items.map(item => {
+//         const pct = Math.round(item.ratio * 100);
+//         const heat = Math.round(item.calorific * item.ratio);
+//         const cost = Math.round(
+//             (item.price + item.short_transport + item.screening_fee + item.crushing_fee + 1.8) * item.ratio
+//         );
+//         return `
+//                         <tr>
+//                             <td class="border px-3 py-2">${item.name}</td>
+//                             <td class="border px-3 py-2 text-right">${pct}%</td>
+//                             <td class="border px-3 py-2 text-right">${heat}</td>
+//                             <td class="border px-3 py-2 text-right">${cost}</td>
+//                         </tr>`;
+//     }).join("")}
+//             </tbody>
+//         </table>
+//     `;
+// }
 
 // =============================
 // 初始化

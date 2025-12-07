@@ -203,6 +203,40 @@
             color: #4b5563;
             margin-top: 4px;
         }
+
+        /* 展开详情按钮 */
+.detail-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    color: #6f98f4;  /* 蓝色品牌色 */
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    user-select: none;
+    transition: color .2s ease;
+    margin-top: 8px;
+}
+
+.detail-toggle-btn:hover {
+    color: #1e40af; /* 深一点的蓝色 */
+}
+
+/* 小图标动画 */
+.detail-toggle-btn i {
+    margin-right: 6px;
+    transition: transform .25s ease;
+}
+
+/* 展开时旋转图标 */
+.detail-toggle-btn.expanded i {
+    transform: rotate(180deg);
+}
+
+/* 详情区域动画（可选） */
+.detail-box {
+    transition: all .25s ease;
+    overflow: hidden;
+}
     </style>
 </head>
 
