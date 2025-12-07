@@ -8,6 +8,7 @@ import traceback
 import logging
 from werkzeug.exceptions import NotFound
 from decimal import Decimal  # 导入 Decimal 类型
+from decimal import Decimal
 
 app = Flask(__name__)
 CORS(app)
@@ -22,6 +23,14 @@ DB_CONFIG = {
     "password": "rootroot",
     "database": "coal_db"
 }
+
+# DB_CONFIG = {
+#     "host": "127.0.0.1",
+#     "port": 3309,
+#     "user": "coal",
+#     "password": "coal!@#$",
+#     "database": "coal_db"
+# }
 
 # ---------- 创建 MySQL 连接 ----------
 def get_connection():
@@ -76,6 +85,55 @@ def favicon():
 #                 ★       API：原煤管理      ★
 # ============================================================
 
+def json_safe(obj):
+    """
+    递归转换 JSON 不可序列化的类型：
+    - Decimal → float
+    - datetime → ISO 字符串
+    - date → ISO 字符串
+    """
+    if isinstance(obj, list):
+        return [json_safe(i) for i in obj]
+
+    elif isinstance(obj, dict):
+        return {k: json_safe(v) for k, v in obj.items()}
+
+    elif isinstance(obj, Decimal):
+        return float(obj)
+
+    elif isinstance(obj, (datetime.datetime, datetime.date)):
+        return obj.isoformat()
+
+    return obj
+
+
+def log_coal_action(coal_id, action, old_data, new_data, changes, userid="", username=""):
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            INSERT INTO coal_logs (coal_id, userid, username, action, 
+                                   old_data, new_data, changes, modified_time)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+        """, (
+            coal_id,
+            userid,
+            username,
+            action,
+            json.dumps(json_safe(old_data), ensure_ascii=False),
+            json.dumps(json_safe(new_data), ensure_ascii=False),
+            json.dumps(json_safe(changes), ensure_ascii=False)
+        ))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+    except Exception as e:
+        print("日志写入失败：", e)
+
+
 # ---------- 获取所有原煤 ----------
 @app.route('/api/coals', methods=['GET'])
 def get_coals():
@@ -102,41 +160,92 @@ def save_coal():
     conn = get_connection()
     cursor = conn.cursor()
 
-    if data.get("id"):  # UPDATE
+    # 新增
+    if not data.get("id"):
+        cursor.execute("""
+            INSERT INTO raw_coals (name, calorific, ash, sulfur, volatile,
+                                  recovery, g_value, x_value, y_value,
+                                  price, short_transport, screening_fee, crushing_fee, is_domestic)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (
+            data["name"], data["calorific"], data["ash"], data["sulfur"],
+            data["volatile"], data["recovery"], data["g_value"],
+            data["x_value"], data["y_value"], data["price"],
+            data["short_transport"], data["screening_fee"],
+            data["crushing_fee"], data["is_domestic"]
+        ))
+
+        coal_id = cursor.lastrowid
+
+        # ★ 日志：新增保存 new_data 完整记录
+        log_coal_action(coal_id, "ADD", old_data=None, new_data=data, changes=None)
+
+    else:
+        # ------- UPDATE --------
+        coal_id = data["id"]
+
+        # 读取旧数据
+        cursor.execute("SELECT * FROM raw_coals WHERE id=%s", (coal_id,))
+        old = cursor.fetchone()
+
         cursor.execute("""
             UPDATE raw_coals
-            SET name=%s, calorific=%s, ash=%s, sulfur=%s, volatile=%s, 
-                recovery=%s, g_value=%s, x_value=%s, y_value=%s, 
-                price=%s, short_transport=%s, screening_fee=%s, crushing_fee=%s
+            SET name=%s, calorific=%s, ash=%s, sulfur=%s, volatile=%s,
+                recovery=%s, g_value=%s, x_value=%s, y_value=%s,
+                price=%s, short_transport=%s, screening_fee=%s, crushing_fee=%s, is_domestic=%s
             WHERE id=%s
-        """, (data["name"], data["calorific"], data["ash"], data["sulfur"],
-              data["volatile"], data["recovery"], data["g_value"],
-              data["x_value"], data["y_value"], data["price"],
-              data["short_transport"], data["screening_fee"],
-              data["crushing_fee"], data["id"]))
-    else:  # INSERT
-        cursor.execute("""
-            INSERT INTO raw_coals (name, calorific, ash, sulfur, volatile, 
-                                  recovery, g_value, x_value, y_value, 
-                                  price, short_transport, screening_fee, crushing_fee)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (data["name"], data["calorific"], data["ash"], data["sulfur"],
-              data["volatile"], data["recovery"], data["g_value"],
-              data["x_value"], data["y_value"], data["price"],
-              data["short_transport"], data["screening_fee"],
-              data["crushing_fee"]))
+        """, (
+            data["name"], data["calorific"], data["ash"], data["sulfur"],
+            data["volatile"], data["recovery"], data["g_value"],
+            data["x_value"], data["y_value"], data["price"],
+            data["short_transport"], data["screening_fee"],
+            data["crushing_fee"], data["is_domestic"], coal_id
+        ))
+
+        # ------- 日志：记录完整 old/new + 变化字段 -------
+        changes = {}
+
+        for key in data:
+            if key in old:
+                old_v = str(old[key])
+                new_v = str(data[key])
+                if old_v != new_v:
+                    changes[key] = {"old": old_v, "new": new_v}
+
+        log_coal_action(
+            coal_id,
+            "UPDATE",
+            old_data=old,
+            new_data=data,
+            changes=changes
+        )
 
     conn.commit()
     conn.close()
     return jsonify({"success": True})
-
 @app.route('/api/coals/<int:coal_id>', methods=['DELETE'])
 def delete_coal(coal_id):
     try:
         conn = get_connection()
         cursor = conn.cursor()
+
+        # 读取旧数据（删除后就没了）
+        cursor.execute("SELECT * FROM raw_coals WHERE id=%s", (coal_id,))
+        old = cursor.fetchone()
+
+        # 删除
         cursor.execute("DELETE FROM raw_coals WHERE id=%s", (coal_id,))
         conn.commit()
+
+        # 日志（old_data 保存被删内容）
+        log_coal_action(
+            coal_id,
+            "DELETE",
+            old_data=old,
+            new_data=None,
+            changes=None
+        )
+
         cursor.close()
         conn.close()
         return jsonify({"success": True, "message": "删除成功"})
@@ -247,13 +356,16 @@ def electric_blend():
     电煤配比：支持 1 / 2 / 3 种煤组合
     步长枚举：1%、5%、10%
     返回给前端的数据保证字段完整，不出现 undefined / NaN
+    —— 关键修复：全程用 id 关联，而不是 name
     """
     try:
         target = request.json or {}
         target_calorific = float(target.get("calorific", 0))
         selected_coal_ids = target.get("selected_coal_ids", [])
 
+        # ---------------------------
         # 步长
+        # ---------------------------
         step_sizes = target.get("step_sizes", [10])
         if not isinstance(step_sizes, list) or len(step_sizes) == 0:
             step_sizes = [10]
@@ -271,15 +383,15 @@ def electric_blend():
         if selected_coal_ids:
             placeholders = ', '.join(['%s'] * len(selected_coal_ids))
             cursor.execute(f"""
-                SELECT name, calorific, price, short_transport,
-                       screening_fee, crushing_fee
+                SELECT id, name, calorific, price, short_transport,
+                       screening_fee, crushing_fee, is_domestic
                 FROM raw_coals
                 WHERE id IN ({placeholders})
             """, tuple(selected_coal_ids))
         else:
             cursor.execute("""
-                SELECT name, calorific, price, short_transport,
-                       screening_fee, crushing_fee
+                SELECT id, name, calorific, price, short_transport,
+                       screening_fee, crushing_fee, is_domestic
                 FROM raw_coals
             """)
 
@@ -296,6 +408,7 @@ def electric_blend():
         # 数据准备
         # ---------------------------
         n = len(rows)
+        ids = [r["id"] for r in rows]
         names = [r["name"] for r in rows]
         calorific = [float(r["calorific"]) for r in rows]
         price = [float(r["price"]) for r in rows]
@@ -328,20 +441,22 @@ def electric_blend():
         x = lp.x
 
         # ---------------------------
-        # 修复关键：按 LP 结果排序，确保能选到 3 种煤
+        # 按 LP 结果排序，选出参与枚举的 3 种煤
         # ---------------------------
         sorted_idx = sorted(range(n), key=lambda i: x[i], reverse=True)
-        top_idx = sorted_idx[:3]  # 永远可以取到 1～3 种煤
+        top_idx = sorted_idx[:3]
 
-        # 构建参与枚举的煤数据
+        # 参与枚举的煤（带 id）
         coals2 = [{
+            "id": ids[i],
             "name": names[i],
             "calorific": calorific[i],
             "price": price[i],
             "short": short[i],
             "screening": screening[i],
             "crushing": crushing[i],
-            "unit_cost": unit_cost[i]
+            "unit_cost": unit_cost[i],
+            "is_domestic": rows[i]["is_domestic"]
         } for i in top_idx]
 
         k = len(coals2)
@@ -352,7 +467,7 @@ def electric_blend():
         plans = []
 
         # ---------------------------
-        # 1. 单煤种
+        # 1. 单煤种方案
         # ---------------------------
         for c in coals2:
             if c["calorific"] >= target_calorific:
@@ -362,6 +477,7 @@ def electric_blend():
                     "mix_calorific": round(c["calorific"], 2),
                     "mix_cost": round(c["unit_cost"], 2),
                     "items": [{
+                        "id": c["id"],
                         "name": c["name"],
                         "ratio": 1.0,
                         "calorific": c["calorific"],
@@ -370,7 +486,8 @@ def electric_blend():
                         "screening_fee": c["screening"],
                         "crushing_fee": c["crushing"],
                         "blending_fee": blending_fee,
-                        "unit_cost": c["unit_cost"]
+                        "unit_cost": c["unit_cost"],
+                        "is_domestic": c["is_domestic"]
                     }]
                 })
 
@@ -383,7 +500,8 @@ def electric_blend():
                     c1, c2 = coals2[i], coals2[j]
                     for r1 in steps:
                         r2 = 1 - r1
-                        if r2 < 0: continue
+                        if r2 < 0:
+                            continue
 
                         mix_cal = c1["calorific"] * r1 + c2["calorific"] * r2
                         if mix_cal < target_calorific:
@@ -394,6 +512,7 @@ def electric_blend():
                         items = []
                         if r1 > 0.001:
                             items.append({
+                                "id": c1["id"],
                                 "name": c1["name"],
                                 "ratio": round(r1, 4),
                                 "calorific": c1["calorific"],
@@ -402,10 +521,12 @@ def electric_blend():
                                 "screening_fee": c1["screening"],
                                 "crushing_fee": c1["crushing"],
                                 "blending_fee": blending_fee,
-                                "unit_cost": c1["unit_cost"]
+                                "unit_cost": c1["unit_cost"],
+                                "is_domestic": c1["is_domestic"]
                             })
                         if r2 > 0.001:
                             items.append({
+                                "id": c2["id"],
                                 "name": c2["name"],
                                 "ratio": round(r2, 4),
                                 "calorific": c2["calorific"],
@@ -414,7 +535,8 @@ def electric_blend():
                                 "screening_fee": c2["screening"],
                                 "crushing_fee": c2["crushing"],
                                 "blending_fee": blending_fee,
-                                "unit_cost": c2["unit_cost"]
+                                "unit_cost": c2["unit_cost"],
+                                "is_domestic": c2["is_domestic"]
                             })
 
                         plans.append({
@@ -426,14 +548,12 @@ def electric_blend():
                         })
 
         # ---------------------------
-        # 3. 三煤种组合（真正的三煤组合）
+        # 3. 三煤种组合
         # ---------------------------
         if k >= 3:
             for ratios in product(steps, repeat=3):
                 if abs(sum(ratios) - 1.0) > 0.001:
                     continue
-
-                # 三个都大于 0 才算三煤方案
                 if sum(1 for r in ratios if r > 0.001) != 3:
                     continue
 
@@ -443,87 +563,79 @@ def electric_blend():
 
                 mix_cost = sum(coals2[i]["unit_cost"] * ratios[i] for i in range(3))
 
-                # ---------------------------
-                # 构建 items（参与配比的煤）
-                # ---------------------------
                 items = []
                 for i in range(3):
+                    c = coals2[i]
                     items.append({
-                        "name": coals2[i]["name"],
+                        "id": c["id"],
+                        "name": c["name"],
                         "ratio": round(ratios[i], 4),
-                        "calorific": coals2[i]["calorific"],
-                        "price": coals2[i]["price"],
-                        "short_transport": coals2[i]["short"],
-                        "screening_fee": coals2[i]["screening"],
-                        "crushing_fee": coals2[i]["crushing"],
+                        "calorific": c["calorific"],
+                        "price": c["price"],
+                        "short_transport": c["short"],
+                        "screening_fee": c["screening"],
+                        "crushing_fee": c["crushing"],
                         "blending_fee": blending_fee,
-                        "unit_cost": coals2[i]["unit_cost"]
+                        "unit_cost": c["unit_cost"],
+                        "is_domestic": c["is_domestic"]
                     })
 
-                # ---------------------------
-                # ★ 正确构建 all_coals（包含所有煤 + ratio=0）
-                # rows = dict 列表，所以必须用 row["字段"]
-                # ---------------------------
+                # all_coals：所有煤，ratio 先给 0，后面再根据 id 写回
                 all_coals_list = []
                 for r in rows:
                     all_coals_list.append({
+                        "id": r["id"],
                         "name": r["name"],
                         "calorific": float(r["calorific"]),
                         "price": float(r["price"]),
                         "short_transport": float(r["short_transport"]),
                         "screening_fee": float(r["screening_fee"]),
                         "crushing_fee": float(r["crushing_fee"]),
-                        "ratio": 0.0  # 默认 0
+                        "ratio": 0.0,
+                        "is_domestic": r["is_domestic"]
                     })
 
-                # ---------------------------
-                # 把参与配比的比例写回 all_coals
-                # ---------------------------
-                ratio_map = {item["name"]: item["ratio"] for item in items}
-
+                ratio_map = {item["id"]: item["ratio"] for item in items}
                 for c in all_coals_list:
-                    if c["name"] in ratio_map:
-                        c["ratio"] = ratio_map[c["name"]]
+                    if c["id"] in ratio_map:
+                        c["ratio"] = ratio_map[c["id"]]
 
-                # ---------------------------
-                # 添加方案
-                # ---------------------------
                 plans.append({
                     "type": "三煤种",
                     "coal_count": 3,
                     "items": items,
-                    "all_coals": all_coals_list,  # ★前端完整显示
+                    "all_coals": all_coals_list,
                     "mix_calorific": round(mix_cal, 2),
                     "mix_cost": round(mix_cost, 2)
                 })
 
         # ---------------------------
-        # ★修复：给所有方案补充 all_coals 字段，避免前端 undefined
+        # 所有方案补齐 all_coals（按 id 写回比例）
         # ---------------------------
         full_all_coals = [
             {
+                "id": r["id"],
                 "name": r["name"],
                 "calorific": float(r["calorific"]),
                 "price": float(r["price"]),
                 "short_transport": float(r["short_transport"]),
                 "screening_fee": float(r["screening_fee"]),
                 "crushing_fee": float(r["crushing_fee"]),
-                "ratio": 0.0
+                "ratio": 0.0,
+                "is_domestic": r["is_domestic"]
             }
             for r in rows
         ]
 
         for p in plans:
-            # 如果没有 all_coals，则补上
             if "all_coals" not in p:
-                p["all_coals"] = full_all_coals.copy()
+                # 复制一份基准列表
+                p["all_coals"] = [c.copy() for c in full_all_coals]
 
-            # 将 items 中的实际比例写入 all_coals
-            ratio_map = {item["name"]: item["ratio"] for item in p["items"]}
-
+            ratio_map = {item["id"]: item["ratio"] for item in p["items"]}
             for c in p["all_coals"]:
-                if c["name"] in ratio_map:
-                    c["ratio"] = ratio_map[c["name"]]
+                c["ratio"] = float(ratio_map.get(c["id"], 0.0))
+
         # ---------------------------
         # 去重 + 取前 5 种成本最低方案
         # ---------------------------
@@ -543,7 +655,6 @@ def electric_blend():
     except Exception as e:
         traceback.print_exc()
         return jsonify({"success": False, "message": str(e)})
-
 
 # ---------- 保存历史记录（需确保表结构存在） ----------
 def save_history(result):

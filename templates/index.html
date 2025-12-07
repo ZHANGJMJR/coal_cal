@@ -40,6 +40,7 @@
         .coal-card {
             transition: transform .15s ease;
         }
+
         .coal-card:hover {
             transform: translateY(-2px);
         }
@@ -82,8 +83,8 @@
             display: flex;
             align-items: center;
             transition: 0.25s ease;
-            padding: 16px 18px;        /* 高度加倍 */
-            height: 64px;              /* 显式高度 */
+            padding: 16px 18px; /* 高度加倍 */
+            height: 64px; /* 显式高度 */
             font-size: 18px;
         }
 
@@ -118,7 +119,7 @@
             background: linear-gradient(to bottom, #f8fafc, #e2e8f0);
             border: 3px solid #cbd5e1;
             overflow: hidden;
-            box-shadow: inset 0 0 4px rgba(0,0,0,0.10);
+            box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.10);
         }
 
         /* 顶部内壁高光（内侧弧线效果） */
@@ -131,10 +132,10 @@
             width: 92%;
             height: 14px;
             background: radial-gradient(
-                ellipse at center,
-                rgba(0,0,0,0.18) 0%,
-                rgba(0,0,0,0.10) 45%,
-                rgba(0,0,0,0.00) 100%
+                    ellipse at center,
+                    rgba(0, 0, 0, 0.18) 0%,
+                    rgba(0, 0, 0, 0.10) 45%,
+                    rgba(0, 0, 0, 0.00) 100%
             );
             border-radius: 50%;
             z-index: 2;
@@ -162,11 +163,11 @@
             bottom: 0;
 
             background: radial-gradient(
-                ellipse at center,
-                rgba(180,185,190,0.35) 0%,
-                rgba(200,205,210,0.20) 45%,
-                rgba(220,225,230,0.10) 70%,
-                rgba(240,245,250,0) 100%
+                    ellipse at center,
+                    rgba(180, 185, 190, 0.35) 0%,
+                    rgba(200, 205, 210, 0.20) 45%,
+                    rgba(220, 225, 230, 0.10) 70%,
+                    rgba(240, 245, 250, 0) 100%
             );
             border-radius: 50%;
             pointer-events: none;
@@ -205,38 +206,38 @@
         }
 
         /* 展开详情按钮 */
-.detail-toggle-btn {
-    display: inline-flex;
-    align-items: center;
-    color: #6f98f4;  /* 蓝色品牌色 */
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    user-select: none;
-    transition: color .2s ease;
-    margin-top: 8px;
-}
+        .detail-toggle-btn {
+            display: inline-flex;
+            align-items: center;
+            color: #6f98f4; /* 蓝色品牌色 */
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            user-select: none;
+            transition: color .2s ease;
+            margin-top: 8px;
+        }
 
-.detail-toggle-btn:hover {
-    color: #1e40af; /* 深一点的蓝色 */
-}
+        .detail-toggle-btn:hover {
+            color: #1e40af; /* 深一点的蓝色 */
+        }
 
-/* 小图标动画 */
-.detail-toggle-btn i {
-    margin-right: 6px;
-    transition: transform .25s ease;
-}
+        /* 小图标动画 */
+        .detail-toggle-btn i {
+            margin-right: 6px;
+            transition: transform .25s ease;
+        }
 
-/* 展开时旋转图标 */
-.detail-toggle-btn.expanded i {
-    transform: rotate(180deg);
-}
+        /* 展开时旋转图标 */
+        .detail-toggle-btn.expanded i {
+            transform: rotate(180deg);
+        }
 
-/* 详情区域动画（可选） */
-.detail-box {
-    transition: all .25s ease;
-    overflow: hidden;
-}
+        /* 详情区域动画（可选） */
+        .detail-box {
+            transition: all .25s ease;
+            overflow: hidden;
+        }
     </style>
 </head>
 
@@ -276,13 +277,21 @@
             <form id="coal-form" class="grid grid-cols-1 md:grid-cols-5 gap-4">
                 <div>
                     <label class="block text-gray-700 mb-1">原煤名称</label>
-                    <input type="text" id="coal-name" required
-                           class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                    <select id="coal-name" required
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 cursor-pointer">
+                        <option value="A煤">A煤</option>
+                        <option value="B煤">B煤</option>
+                        <option value="F煤">F煤</option>
+                        <option value="WB煤">WB煤</option>
+                        <option value="F2煤">F2煤</option>
+                        <option value="A-煤">A-煤</option>
+                    </select>
                 </div>
                 <div>
                     <label class="block text-gray-700 mb-1">发热量 (大卡)</label>
                     <input type="number" id="coal-calorific" step="0.1" required
                            class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                    <p id="coal-calorific-error" class="text-red-600 text-sm mt-1 hidden">请输入 1000–7200 范围内的数值</p>
                 </div>
                 <div>
                     <label class="block text-gray-700 mb-1">灰分 (%)</label>
@@ -339,6 +348,13 @@
                     <input type="number" id="coal-crushing-fee" step="0.1" value="0"
                            class="w-full px-3 py-2 border border-gray-300 rounded-md">
                 </div>
+                <div>
+                    <label class="block text-gray-700 mb-1">是否境内煤</label>
+                    <select id="coal-is-domestic" class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                        <option value="1" selected>是</option>
+                        <option value="0" >否</option>
+                    </select>
+                </div>
                 <div class="flex items-center space-x-3 md:col-span-2 pt-2">
                     <button id="coal-submit-btn" type="submit"
                             class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex-shrink-0">
@@ -369,12 +385,13 @@
                         <th class="py-2 px-4 border">挥发份</th>
                         <th class="py-2 px-4 border">回收率</th>
                         <th class="py-2 px-4 border">G值</th>
-                        <th class="py-2 px-4 border">Y值</th>
                         <th class="py-2 px-4 border">X值</th>
+                        <th class="py-2 px-4 border">Y值</th>
                         <th class="py-2 px-4 border">价格</th>
                         <th class="py-2 px-4 border">短倒费</th>
                         <th class="py-2 px-4 border">过筛费</th>
                         <th class="py-2 px-4 border">破碎费</th>
+                        <th class="py-2 px-4 border">境内煤</th>
                     </tr>
                     </thead>
                     <tbody id="coal-table-body">
@@ -443,6 +460,7 @@
                         <label class="block text-gray-700 mb-1">目标发热量 (大卡)</label>
                         <input type="number" id="electric-calorific" step="0.1" value="5000" required
                                class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                        <p id="electric-calorific-error" class="text-red-600 text-sm mt-1 hidden">请输入 1000–7200 范围内的数值</p>
                     </div>
                     <div>
                         <label class="block text-gray-700 mb-1">选择参与配比的原煤</label>
@@ -464,6 +482,7 @@
                                         <th class="py-3 px-4 border">名称</th>
                                         <th class="py-3 px-4 border">发热量</th>
                                         <th class="py-3 px-4 border">价格</th>
+                                        <th class="py-3 px-4 border">境内</th>
                                     </tr>
                                     </thead>
                                     <tbody id="coal-select-table">
