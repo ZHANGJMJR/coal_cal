@@ -176,10 +176,10 @@ function loadCoalSelectionTable(coals) {
             <td class="border px-3 py-2 text-center">
                 ${
                     coal.is_domestic
-                        ? `<span title="境内煤" style="font-size:18px;">🇨🇳</span>`
-                        : `<span title="进口煤" style="font-size:18px;">🌏</span>`
+                    ? `<img src="/static/icons/china.svg" title="境内煤" style="width:20px;height:20px;display:inline-block;">`
+                    : `<img src="/static/icons/global.svg" title="进口煤" style="width:20px;height:20px;display:inline-block;">`
                 }
-            </td> 
+            </td>
         `;
 
         tableBody.appendChild(row);
@@ -864,8 +864,8 @@ function buildDetailTable(plan) {
                             <td class="border px-3 py-2 text-center">
                                 ${
                                     c.is_domestic
-                                        ? `<span title="境内煤" style="font-size:18px;">🇨🇳</span>`
-                                        : `<span title="进口煤" style="font-size:18px;">🌏</span>`
+                                    ? `<img src="/static/icons/china.svg" title="境内煤" style="width:20px;height:20px;display:inline-block;">`
+                                    : `<img src="/static/icons/global.svg" title="进口煤" style="width:20px;height:20px;display:inline-block;">`
                                 }
                             </td>
 <!--                            <td class="border px-3 py-2 text-center">${c.is_domestic ? "是" : "否"}</td>-->
