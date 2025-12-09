@@ -113,8 +113,8 @@
 
         .coal-oil-tank {
             position: relative;
-            width: 120px;
-            height: 108px;
+            width: 100px;
+            height: 120px;
             border-radius: 60px / 14px; /* 顶部椭圆 */
             background: linear-gradient(to bottom, #f8fafc, #e2e8f0);
             border: 3px solid #cbd5e1;
@@ -194,7 +194,7 @@
         }
 
         .coal-oil-pct {
-            font-size: 18px;
+            font-size: 16px;
             font-weight: 700;
             color: #2563eb;
         }
@@ -255,19 +255,19 @@
     <!-- 标签页导航 -->
     <div class="flex border-b border-gray-200 mb-6">
         <button id="tab-electric" class="tab-btn py-2 px-4 border-b-2 border-blue-500 text-blue-600 font-medium">
-            <i class="fa fa-bolt mr-2"></i>电煤计算
+            <i class="fa fa-bolt mr-2"></i>动力煤计算
         </button>
         <button id="tab-coal" class="tab-btn py-2 px-4 border-b-2 border-transparent text-gray-500 hover:text-gray-700">
-            <i class="fa fa-coffee mr-2"></i>原煤管理
+            <i class="fa fa-coffee mr-2"></i>动力煤管理
         </button>
         <button id="tab-blend"
                 class="tab-btn py-2 px-4 border-b-2 border-transparent text-gray-500 hover:text-gray-700">
-            <i class="fa fa-calculator mr-2"></i>配煤计算-待完善
+            <i class="fa fa-calculator mr-2"></i>配焦煤-待完善
         </button>
-        <button id="tab-result"
+        <!--button id="tab-result"
                 class="tab-btn py-2 px-4 border-b-2 border-transparent text-gray-500 hover:text-gray-700">
             <i class="fa fa-bar-chart mr-2"></i>计算结果-待完善
-        </button>
+        </button-->
     </div>
 
     <!-- 原煤管理面板 -->
@@ -291,7 +291,7 @@
                     <label class="block text-gray-700 mb-1">发热量 (大卡)</label>
                     <input type="number" id="coal-calorific" step="0.1" required
                            class="w-full px-3 py-2 border border-gray-300 rounded-md">
-                    <p id="coal-calorific-error" class="text-red-600 text-sm mt-1 hidden">请输入 1000–7200 范围内的数值</p>
+                    <p id="coal-calorific-error" class="text-red-600 text-sm mt-1 hidden">请输入 1000–9000 范围内的数值</p>
                 </div>
                 <div>
                     <label class="block text-gray-700 mb-1">灰分 (%)</label>
@@ -329,7 +329,7 @@
                            class="w-full px-3 py-2 border border-gray-300 rounded-md">
                 </div>
                 <div>
-                    <label class="block text-gray-700 mb-1">价格 (元/吨)</label>
+                    <label class="block text-gray-700 mb-1">成本 (元/吨)</label>
                     <input type="number" id="coal-price" step="0.1" required
                            class="w-full px-3 py-2 border border-gray-300 rounded-md">
                 </div>
@@ -349,7 +349,7 @@
                            class="w-full px-3 py-2 border border-gray-300 rounded-md">
                 </div>
                 <div>
-                    <label class="block text-gray-700 mb-1">是否境内煤</label>
+                    <label class="block text-gray-700 mb-1">是否策克煤</label>
                     <select id="coal-is-domestic" class="w-full px-3 py-2 border border-gray-300 rounded-md">
                         <option value="1" selected>是</option>
                         <option value="0" >否</option>
@@ -387,11 +387,11 @@
                         <th class="py-2 px-4 border">G值</th>
                         <th class="py-2 px-4 border">X值</th>
                         <th class="py-2 px-4 border">Y值</th>
-                        <th class="py-2 px-4 border">价格</th>
+                        <th class="py-2 px-4 border">成本</th>
                         <th class="py-2 px-4 border">短倒费</th>
                         <th class="py-2 px-4 border">过筛费</th>
                         <th class="py-2 px-4 border">破碎费</th>
-                        <th class="py-2 px-4 border">境内煤</th>
+                        <th class="py-2 px-4 border">策克煤</th>
                     </tr>
                     </thead>
                     <tbody id="coal-table-body">
@@ -434,11 +434,15 @@
     <div id="panel-electric" class="tab-panel">
         <div class="bg-white rounded-lg shadow-md p-4">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-semibold text-gray-500">电煤目标设置</h2>
+                <h2 class="text-xl font-semibold text-gray-500">动力煤目标设置</h2>
                 <div class="bg-gray-50 p-2 rounded-md">
                     <div class="flex space-x-6">
                         <label class="flex items-center cursor-pointer">
-                            <input type="checkbox" name="step-size" value="1" class="step-checkbox mr-2 w-4 h-4">
+                            <input type="checkbox" name="step-size" value="0.5" class="step-checkbox mr-2 w-4 h-4" >
+                            <span class="text-gray-700">0.5%</span>
+                        </label>
+                        <label class="flex items-center cursor-pointer">
+                            <input type="checkbox" name="step-size" value="1" class="step-checkbox mr-2 w-4 h-4" checked>
                             <span class="text-gray-700">1%</span>
                         </label>
                         <label class="flex items-center cursor-pointer">
@@ -446,8 +450,7 @@
                             <span class="text-gray-700">5%</span>
                         </label>
                         <label class="flex items-center cursor-pointer">
-                            <input type="checkbox" name="step-size" value="10" class="step-checkbox mr-2 w-4 h-4"
-                                   checked>
+                            <input type="checkbox" name="step-size" value="10" class="step-checkbox mr-2 w-4 h-4">
                             <span class="text-gray-700">10%</span>
                         </label>
                     </div>
@@ -460,7 +463,7 @@
                         <label class="block text-gray-700 mb-1">目标发热量 (大卡)</label>
                         <input type="number" id="electric-calorific" step="0.1" value="5000" required
                                class="w-full px-3 py-2 border border-gray-300 rounded-md">
-                        <p id="electric-calorific-error" class="text-red-600 text-sm mt-1 hidden">请输入 1000–7200 范围内的数值</p>
+                        <p id="electric-calorific-error" class="text-red-600 text-sm mt-1 hidden">请输入 1000–9000 范围内的数值</p>
                     </div>
                     <div>
                         <label class="block text-gray-700 mb-1">选择参与配比的原煤</label>
@@ -481,8 +484,8 @@
                                         <th class="py-3 px-4 border text-center">选择</th>
                                         <th class="py-3 px-4 border">名称</th>
                                         <th class="py-3 px-4 border">发热量</th>
-                                        <th class="py-3 px-4 border">价格</th>
-                                        <th class="py-3 px-4 border">境内</th>
+                                        <th class="py-3 px-4 border">成本</th>
+                                        <th class="py-3 px-4 border">策克</th>
                                     </tr>
                                     </thead>
                                     <tbody id="coal-select-table">
@@ -510,14 +513,14 @@
 
                 <button type="submit"
                         class="bg-yellow-500 text-white px-6 py-2 rounded-md hover:bg-yellow-600">
-                    <i class="fa fa-bolt mr-1"></i>计算电煤配比
+                    <i class="fa fa-bolt mr-1"></i>查看配煤结果
                 </button>
             </form>
         </div>
 
         <!-- 电煤多方案结果（桶形展示） -->
         <div id="electric-result" class="bg-white rounded-lg shadow-md p-4 mt-6 hidden">
-            <h2 class="text-xl font-semibold mb-4 text-gray-500">电煤配比方案（按成本排序）</h2>
+            <h2 class="text-xl font-semibold mb-4 text-gray-500">动力煤配比方案（按成本排序）</h2>
             <div id="electric-plan-list" class="space-y-4"></div>
         </div>
     </div>

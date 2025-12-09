@@ -16,22 +16,22 @@ CORS(app)
 logging.basicConfig(level=logging.ERROR)
 
 # ---------- MySQL 配置 ----------
-DB_CONFIG = {
-    "host": "127.0.0.1",
-    "port": 3306,
-    "user": "root",
-    "password": "rootroot",
-    "database": "coal_db"
-}
-
 # DB_CONFIG = {
 #     "host": "127.0.0.1",
-#     "port": 3309,
-#     "user": "coal",
-#     "password": "coal!@#$",
+#     "port": 3306,
+#     "user": "root",
+#     "password": "rootroot",
 #     "database": "coal_db"
 # }
 
+
+DB_CONFIG = {
+    "host": "127.0.0.1",
+    "port": 3309,
+    "user": "coal",
+    "password": "coal!@#$",
+    "database": "coal_db"
+}
 # ---------- 创建 MySQL 连接 ----------
 def get_connection():
     try:
@@ -370,9 +370,11 @@ def electric_blend():
         if not isinstance(step_sizes, list) or len(step_sizes) == 0:
             step_sizes = [10]
 
-        step_size = int(step_sizes[0])
-        if step_size not in [1, 5, 10]:
+        step_size = float(step_sizes[0])
+        if step_size not in [0.5, 1, 5, 10]:
             step_size = 10
+        # if step_size == 1:
+        #     step_size =0.5
 
         # ---------------------------
         # 从数据库读取原煤数据
@@ -443,7 +445,17 @@ def electric_blend():
         # ---------------------------
         # 按 LP 结果排序，选出参与枚举的 3 种煤
         # ---------------------------
-        sorted_idx = sorted(range(n), key=lambda i: x[i], reverse=True)
+        # sorted_idx = sorted(range(n), key=lambda i: x[i], reverse=True)
+        # top_idx = sorted_idx[:3]
+        # ---------------------------
+        # 正确的 top-3 选择逻辑：按评分(热值/目标热值)/成本 排序
+        # ---------------------------
+        coal_scores = []
+        for i in range(n):
+            score = (calorific[i] / target_calorific) / unit_cost[i]
+            coal_scores.append((i, score))
+
+        sorted_idx = [i for i, s in sorted(coal_scores, key=lambda x: x[1], reverse=True)]
         top_idx = sorted_idx[:3]
 
         # 参与枚举的煤（带 id）
