@@ -3,6 +3,9 @@ import pandas as pd
 import pymysql
 from datetime import datetime, timedelta
 from playwright.sync_api import sync_playwright
+from apscheduler.schedulers.blocking import BlockingScheduler
+from apscheduler.triggers.cron import CronTrigger
+import traceback
 
 # ==================================================
 # 基础配置
@@ -160,5 +163,24 @@ def main():
     print("🧹 本地文件已删除")
 
 
+def safe_job():
+    try:
+        main()
+    except Exception:
+        print("❌ 定时任务执行异常：")
+        traceback.print_exc()
+
 if __name__ == "__main__":
-    main()
+    # cron表达式：每天 08:00 执行（等价于 0 8 * * *）
+    scheduler = BlockingScheduler(timezone="Asia/Shanghai")  # 你需要也可改成 Asia/Singapore
+    scheduler.add_job(
+        safe_job,
+        CronTrigger.from_crontab("0 8 * * *"),
+        id="sxcoal_cci_job",
+        replace_existing=True,
+        max_instances=1,   # 防止重叠执行
+        coalesce=True      # 若错过时间点，合并补跑一次
+    )
+
+    print("✅ 定时任务已启动：每天 08:00 自动执行（cron=0 8 * * *）")
+    scheduler.start()
