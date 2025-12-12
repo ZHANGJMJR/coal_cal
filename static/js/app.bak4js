@@ -1,32 +1,16 @@
-///---CCI价格获取 start
- // =============================
-// CCI 价格获取 + Tooltip（最终修复版）
+// =============================
+// 输入框自动选择内容（text + number）+ 数值区间校验
 // =============================
 
+///---CCI价格获取 start
 let latestCCI = null;
-function formatDateTimeCN(date) {
-    const pad = n => n.toString().padStart(2, '0');
-    return (
-        date.getFullYear() + '年' +
-        pad(date.getMonth() + 1) + '月' +
-        pad(date.getDate()) + '日 ' +
-        pad(date.getHours()) + ':' +
-        pad(date.getMinutes()) + ':' +
-        pad(date.getSeconds())
-    );
-}
-/**
- * 获取最新 CCI 数据
- */
+
 async function loadLatestCCI() {
     try {
         const res = await fetch('/api/cci/latest');
         const data = await res.json();
 
-        if (!data.success) {
-            latestCCI = null;
-            return false;
-        }
+        if (!data.success) return false;
 
         latestCCI = {
             price: data.cci_price,
@@ -35,20 +19,15 @@ async function loadLatestCCI() {
         return true;
     } catch (e) {
         console.error("获取 CCI 失败", e);
-        latestCCI = null;
         return false;
     }
 }
 
-/**
- * 构建 CCI Tooltip 所需数据
- * ⚠️ 不再返回 bgClass，直接返回 inline style
- */
 function buildCCITooltip() {
     if (!latestCCI) {
         return {
             tipText: "暂无 CCI 数据",
-            bgStyle: "background-color:#f3f4f6;" // gray-100
+            bgClass: "bg-gray-100"
         };
     }
 
@@ -56,44 +35,20 @@ function buildCCITooltip() {
     const diffMs = now - latestCCI.insertTime;
     const diffDays = diffMs / (1000 * 60 * 60 * 24);
 
-    // ≤ 1 天：淡绿色；> 1 天：淡粉色
-    const bgStyle =
-        diffDays <= 1
-            ? "background-color:#dcfce7;" // green-100
-            : "background-color:#fce7f3;"; // pink-100
+    let bgClass = "bg-green-100"; // 默认：1天内
+    if (diffDays > 1) {
+        bgClass = "bg-pink-100";
+    }
 
     const tipText =
-    `数据获取时间：${formatDateTimeCN(latestCCI.insertTime)}`;
+        `数据插入时间：${latestCCI.insertTime.toLocaleString()}`;
 
-    return {
-        tipText,
-        bgStyle,
-        arrowColor: diffDays <= 1 ? "#dcfce7" : "#fce7f3"
-    };
+    return {bgClass, tipText};
 }
 
-function showCCITooltip(el) {
-    const tooltip = el.querySelector(".cci-tooltip");
-    if (tooltip) {
-        tooltip.classList.remove("hidden");
-    }
-}
-
-function hideCCITooltip(el) {
-    const tooltip = el.querySelector(".cci-tooltip");
-    if (tooltip) {
-        tooltip.classList.add("hidden");
-    }
-}
 // const cciInfo = buildCCITooltip();
 // const cciPriceText = latestCCI ? `${latestCCI.price}元/吨` : "—";
 ///---CCI价格获取 end
-
-
-
-// =============================
-// 输入框自动选择内容（text + number）+ 数值区间校验
-// =============================
 
 // 通用数值区间校验
 function attachRangeValidator(inputId, min, max, message) {
@@ -682,7 +637,7 @@ function renderElectricPlans(plans) {
             ? buildCCITooltip()
             : {bgClass: "bg-gray-100", tipText: "CCI 数据加载中…"};
         const cciPriceText = latestCCI
-            ? `${Math.round(latestCCI.price)}元/吨`
+            ? `${latestCCI.price}元/吨`
             : "—";
 
         const card = document.createElement("div");
@@ -764,66 +719,39 @@ function renderElectricPlans(plans) {
                 <!-- 右列：成本 + 按钮 -->
                 <div class="flex items-center justify-end space-x-6 overflow-visible">
                 <div class="text-gray-800 text-base font-bold leading-8 text-right mr-8">
-                      
-                        <div class="flex justify-end whitespace-nowrap overflow-visible">
+                        <div class="flex justify-end whitespace-nowrap">
+                                
+                                <div class="flex justify-end whitespace-nowrap relative group">
 
-                           <span class="inline-flex items-center font-semibold"  
-                                    onmouseenter="showCCITooltip(this)"
-                                    onmouseleave="hideCCITooltip(this)">
-                                CCI价格：
-                                <span class="relative inline-block cursor-help text-lg font-bold ml-1"   >
-                                    ${cciPriceText}
-                            
-                                    <!-- Tooltip -->
-                                    <div
-                                          class="
-                                            cci-tooltip
-                                            absolute
-                                            left-1/2
-                                            -translate-x-1/2
-                                            bottom-full
-                                            mb-3
-                                            hidden
-                                            text-sm font-semibold
-                                            text-gray-800
-                                            rounded-xl
-                                            shadow-2xl
-                                            px-4
-                                            py-3
-                                            whitespace-nowrap
-                                          "
-                                          style="
-                                            ${cciInfo.bgStyle};
-                                            z-index: 999999;
-                                          "
-                                        >
-                                        <!-- 箭头 -->
-                                       <span
-                                            class="
-                                                absolute
-                                                top-full
-                                                left-1/2
-                                                -translate-x-1/2
-                                                w-0 h-0
-                                                border-l-[7px]
-                                                border-r-[7px]
-                                                border-t-[7px]
-                                                border-l-transparent
-                                                border-r-transparent
-                                            "
-                                            style="
-                                                margin-top:-1px;
-                                                border-top-color:${cciInfo.arrowColor};
-                                            "
-                                        ></span>
-                            
+                                    <!-- 价格本体：无背景 -->
+                                    <span class="cursor-help font-semibold">
+                                        CCI价格：
+                                        <span class="text-lg font-bold">
+                                            ${cciPriceText}
+                                        </span>
+                                    </span>
+                                
+                                    <!-- Tooltip：Hover 时出现 -->
+                                    <div class="
+                                        absolute right-0 top-full mt-2
+                                        hidden group-hover:block
+                                        text-xs text-gray-800
+                                        ${cciInfo.bgClass}
+                                        border border-gray-300 rounded shadow
+                                        px-3 py-2
+                                        z-[9999]
+                                        whitespace-nowrap
+                                        pointer-events-none
+                                    ">
                                         ${cciInfo.tipText}
                                     </div>
-                                </span>
-                            </span>
-                        
-                        </div> 
-                                              
+                                </div>    
+
+
+<!--                            <span>CCI价格</span>-->
+<!--                            <span style="display:inline-block; width:16px; text-align:center;">：</span>-->
+<!--                            <span class="line-through " style="font-size: 18px;">560元/吨</span>-->
+                        </div>                        
                         <div class="flex justify-end whitespace-nowrap">
                             <span>倒推策克价格</span>
                             <span style="display:inline-block; width:16px; text-align:center;">：</span>

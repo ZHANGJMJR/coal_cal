@@ -16,22 +16,22 @@ CORS(app)
 logging.basicConfig(level=logging.ERROR)
 
 # ---------- MySQL 配置 ----------
-# DB_CONFIG = {
-#     "host": "127.0.0.1",
-#     "port": 3306,
-#     "user": "root",
-#     "password": "rootroot",
-#     "database": "coal_db"
-# }
-
-
 DB_CONFIG = {
     "host": "127.0.0.1",
-    "port": 3309,
-    "user": "coal",
-    "password": "coal!@#$",
+    "port": 3306,
+    "user": "root",
+    "password": "rootroot",
     "database": "coal_db"
 }
+
+
+# DB_CONFIG = {
+#     "host": "127.0.0.1",
+#     "port": 3309,
+#     "user": "coal",
+#     "password": "coal!@#$",
+#     "database": "coal_db"
+# }
 # ---------- 创建 MySQL 连接 ----------
 def get_connection():
     try:
@@ -667,6 +667,42 @@ def electric_blend():
     except Exception as e:
         traceback.print_exc()
         return jsonify({"success": False, "message": str(e)})
+
+
+
+# ============================================================
+#               ★ API：获取最新 CCI 数据 ★
+# ============================================================
+
+@app.route('/api/cci/latest', methods=['GET'])
+def get_latest_cci():
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT priceavg, curdate
+            FROM cci_sum
+            ORDER BY curdate DESC
+            LIMIT 1
+        """)
+
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+
+        if not row:
+            return jsonify({"success": False, "message": "暂无 CCI 数据"})
+
+        return jsonify({
+            "success": True,
+            "cci_price": float(row["priceavg"]),
+            "insert_time": row["curdate"].isoformat()
+        })
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"success": False, "message": str(e)}), 500
 
 # ---------- 保存历史记录（需确保表结构存在） ----------
 def save_history(result):
