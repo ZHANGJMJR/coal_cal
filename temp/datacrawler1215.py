@@ -23,7 +23,7 @@ TARGET_URL = "https://www.sxcoal.com/data/detail/FW1001I"
 DOWNLOAD_DIR = "./downloads"
 
 DB_CONFIG = {
-    "host": "127.0.0.1",
+    "host": "localhost",
     "user": "root",
     "password": "rootroot",
     "database": "coal_db",
@@ -45,6 +45,10 @@ def get_last_week_range(today: datetime.date):
 
 
 def save_excel_to_mysql(excel_path: str):
+    """
+    解析 Excel → 写入 cci_detail + cci_sum（含 Blob）
+    """
+
     # ---------- 1. 读取 Excel ----------
     df = pd.read_excel(
         excel_path,
@@ -61,20 +65,16 @@ def save_excel_to_mysql(excel_path: str):
         df["trade_date"],
         errors="coerce"
     ).dt.date
-    df = df.dropna(subset=["trade_date"])
-    df["price_rmb"] = pd.to_numeric(df["price_rmb"], errors="coerce")
-    df = df.dropna(subset=["trade_date", "price_rmb"])
 
-    # ---------- 3. 删除倒数第 1、2 行 ----------
+    df = df.dropna(subset=["trade_date"])
+
+    # 删除倒数第 1、2 行
     if len(df) > 2:
         df = df.iloc[:-2]
 
-    # ---------- 4. 过滤价格为空的行（关键修复） ----------
-    df = df.dropna(subset=["price_rmb"])
-
     print(f"有效数据行数：{len(df)}")
 
-    # ---------- 5. 导入 cci_detail ----------
+    # ---------- 3. 导入 cci_detail ----------
     import_date = datetime.today().date()
     df["import_date"] = import_date
 
@@ -94,7 +94,7 @@ def save_excel_to_mysql(excel_path: str):
 
     conn.commit()
 
-    # ---------- 6. 计算上一个自然周均价 ----------
+    # ---------- 4. 计算上一个自然周均价 ----------
     start_date, end_date = get_last_week_range(import_date)
 
     cursor.execute("""
@@ -106,7 +106,7 @@ def save_excel_to_mysql(excel_path: str):
     price_avg = cursor.fetchone()[0]
     price_avg = price_avg if price_avg is not None else 0
 
-    # ---------- 7. Excel 文件转 Blob ----------
+    # ---------- 5. Excel 文件转 Blob ----------
     with open(excel_path, "rb") as f:
         file_blob = f.read()
 
@@ -120,6 +120,7 @@ def save_excel_to_mysql(excel_path: str):
     conn.close()
 
     print(f"✅ 入库完成 | 上周均价 = {price_avg}")
+
 
 # ==================================================
 # 主流程

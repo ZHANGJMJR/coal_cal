@@ -770,7 +770,7 @@ function renderElectricPlans(plans) {
                            <span class="inline-flex items-center font-semibold"  
                                     onmouseenter="showCCITooltip(this)"
                                     onmouseleave="hideCCITooltip(this)">
-                                CCI价格：
+                                CCI周均价：
                                 <span class="relative inline-block cursor-help text-lg font-bold ml-1"   >
                                     ${cciPriceText}
                             
