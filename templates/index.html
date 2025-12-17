@@ -474,7 +474,7 @@
                         </label>
                         <label class="flex items-center cursor-pointer">
                             <input type="checkbox" name="step-size" value="1" class="step-checkbox mr-2 w-4 h-4"
-                                   checked>
+                                   >
                             <span class="text-gray-700">1%</span>
                         </label>
                         <label class="flex items-center cursor-pointer">
@@ -482,7 +482,7 @@
                             <span class="text-gray-700">5%</span>
                         </label>
                         <label class="flex items-center cursor-pointer">
-                            <input type="checkbox" name="step-size" value="10" class="step-checkbox mr-2 w-4 h-4">
+                            <input type="checkbox" name="step-size" value="10" class="step-checkbox mr-2 w-4 h-4" checked>
                             <span class="text-gray-700">10%</span>
                         </label>
                     </div>
@@ -490,27 +490,40 @@
             </div>
 
             <form id="electric-form" class="space-y-4">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 md:grid-cols-6 gap-4">
+                    <!-- 目标发热量 (大卡) -->
                     <div>
                         <label class="block text-gray-700 mb-1">目标发热量 (大卡)</label>
-                        <input type="number" id="electric-calorific" step="0.1" value="5000" required
+                        <input type="number" id="electric-calorific" step="0.1" value="6000" required
                                class="w-full px-3 py-2 border border-gray-300 rounded-md">
                         <p id="electric-calorific-error" class="text-red-600 text-sm mt-1 hidden">请输入 1000–9000
                             范围内的数值</p>
                     </div>
-                    <div>
-                        <label class="block text-gray-700 mb-1">选择参与配比的原煤</label>
-                        <!-- 触发按钮 -->
+                    <!-- 选择参与配比的原煤 -->
+                    <div class="md:col-span-2">
+                        <label class="block text-gray-700 mb-1">
+                            选择参与配比的原煤
+                        </label>
+
                         <div class="relative">
-                            <button type="button" id="coal-select-btn"
-                                    class="w-full px-3 py-2 border border-gray-300 rounded-md text-left bg-white hover:bg-gray-50 flex justify-between items-center">
+                            <button
+                                    type="button"
+                                    id="coal-select-btn"
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-md
+                   text-left bg-white hover:bg-gray-50
+                   flex justify-between items-center"
+                            >
                                 <span id="selected-coals-text">全部原煤</span>
                                 <i class="fa fa-chevron-down"></i>
                             </button>
 
-                            <!-- 弹出层 -->
-                            <div id="coal-select-modal"
-                                 class="hidden absolute top-full left-0 right-0 mt-3 bg-white border border-gray-300 rounded-md shadow-lg z-50 max-h-[550px] overflow-auto">
+                            <!-- 弹层 -->
+                            <div  id="coal-select-modal"
+                                    class="hidden absolute top-full left-0 mt-3
+                                           w-[760px] max-w-[95vw]
+                                           bg-white border border-gray-300 rounded-md shadow-lg
+                                           z-50 max-h-[550px] overflow-auto"  >
+
                                 <table class="min-w-full">
                                     <thead>
                                     <tr class="bg-gray-100">
@@ -541,6 +554,39 @@
                                 </div>
                             </div>
                         </div>
+                    </div>
+                    <!-- 两项运费 及 杂费设置 -->
+                    <div>
+                        <label class="block text-gray-700 mb-1">策克-庙梁费 (元/吨)</label>
+                        <input
+                                type="number"
+                                id="fee-ceke-miaoliang"
+                                step="0.1"
+                                value="10"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        >
+                    </div>
+
+                    <div>
+                        <label class="block text-gray-700 mb-1">庙梁-曹妃甸 (元/吨)</label>
+                        <input
+                                type="number"
+                                id="fee-miaoliang-caofeidian"
+                                step="0.1"
+                                value="20"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        >
+                    </div>
+
+                    <div>
+                        <label class="block text-gray-700 mb-1">杂费 (元/吨)</label>
+                        <input
+                                type="number"
+                                id="fee-misc"
+                                step="0.1"
+                                value="30"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        >
                     </div>
                 </div>
 

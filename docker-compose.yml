@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  mysql8:
+    image: mysql:8.0
+    container_name: mysql8-coal-cal
+    ports:
+      - "3306:3306"
+    environment:
+      # 容器系统时区
+      TZ: Asia/Shanghai
+      # MySQL 根密码（必须替换为你的密码）
+      MYSQL_ROOT_PASSWORD: rootroot
+      # 可选：初始化数据库
+      # MYSQL_DATABASE: your_db_name
+    volumes:
+      # 数据持久化：宿主机当前目录 mysql/data → 容器 /var/lib/mysql
+      - ./mysql/data:/var/lib/mysql
+      # 自定义配置文件：宿主机当前目录 mysql/my.cnf → 容器配置目录
+      - ./mysql/my.cnf:/etc/mysql/conf.d/my.cnf
+    # 重启策略
+    restart: always

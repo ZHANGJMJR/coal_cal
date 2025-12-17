@@ -1,0 +1,1333 @@
+///---CCI价格获取 start
+ // =============================
+// CCI 价格获取 + Tooltip（最终修复版）
+// =============================
+
+let latestCCI = null;
+function formatDateTimeCN(date) {
+    const pad = n => n.toString().padStart(2, '0');
+    return (
+        date.getFullYear() + '年' +
+        pad(date.getMonth() + 1) + '月' +
+        pad(date.getDate()) + '日 ' +
+        pad(date.getHours()) + ':' +
+        pad(date.getMinutes()) + ':' +
+        pad(date.getSeconds())
+    );
+}
+/**
+ * 获取最新 CCI 数据
+ */
+async function loadLatestCCI() {
+    try {
+        const res = await fetch('/api/cci/latest');
+        const data = await res.json();
+
+        if (!data.success) {
+            latestCCI = null;
+            return false;
+        }
+
+        latestCCI = {
+            price: data.cci_price,
+            insertTime: new Date(data.insert_time)
+        };
+        return true;
+    } catch (e) {
+        console.error("获取 CCI 失败", e);
+        latestCCI = null;
+        return false;
+    }
+}
+
+/**
+ * 构建 CCI Tooltip 所需数据
+ * ⚠️ 不再返回 bgClass，直接返回 inline style
+ */
+function buildCCITooltip() {
+    if (!latestCCI) {
+        return {
+            tipText: "暂无 CCI 数据",
+            bgStyle: "background-color:#f3f4f6;" // gray-100
+        };
+    }
+
+    const now = new Date();
+    const diffMs = now - latestCCI.insertTime;
+    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+    // ≤ 1 天：淡绿色；> 1 天：淡粉色
+    const bgStyle =
+        diffDays <= 1
+            ? "background-color:#dcfce7;" // green-100
+            : "background-color:#fce7f3;"; // pink-100
+
+    const tipText =
+    `数据获取时间：${formatDateTimeCN(latestCCI.insertTime)}`;
+
+    return {
+        tipText,
+        bgStyle,
+        arrowColor: diffDays <= 1 ? "#dcfce7" : "#fce7f3"
+    };
+}
+
+function showCCITooltip(el) {
+    const tooltip = el.querySelector(".cci-tooltip");
+    if (tooltip) {
+        tooltip.classList.remove("hidden");
+    }
+}
+
+function hideCCITooltip(el) {
+    const tooltip = el.querySelector(".cci-tooltip");
+    if (tooltip) {
+        tooltip.classList.add("hidden");
+    }
+}
+// const cciInfo = buildCCITooltip();
+// const cciPriceText = latestCCI ? `${latestCCI.price}元/吨` : "—";
+///---CCI价格获取 end
+
+
+
+// =============================
+// 输入框自动选择内容（text + number）+ 数值区间校验
+// =============================
+
+// 通用数值区间校验
+function attachRangeValidator(inputId, min, max, message) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+
+    // 创建错误提示元素（只创建一次）
+    let errorEl = document.createElement("div");
+    errorEl.className = "text-red-600 text-sm mt-1 hidden";
+    input.insertAdjacentElement("afterend", errorEl);
+
+    input.addEventListener("input", () => {
+        const v = parseFloat(input.value);
+
+        if (input.value === "") {
+            input.classList.remove("border-red-500");
+            errorEl.classList.add("hidden");
+            return;
+        }
+
+        if (isNaN(v) || v < min || v > max) {
+            input.classList.add("border-red-500");
+            errorEl.textContent = message;
+            errorEl.classList.remove("hidden");
+        } else {
+            input.classList.remove("border-red-500");
+            errorEl.classList.add("hidden");
+        }
+    });
+}
+
+// 输入框自动全选
+function bindAutoSelect(containerSelector) {
+    const inputs = document.querySelectorAll(
+        `${containerSelector} input[type="text"], 
+         ${containerSelector} input[type="number"]`
+    );
+
+    inputs.forEach(input => {
+        const handler = () => {
+            if (!input.value) return;
+            try {
+                input.select();
+            } catch {
+            }
+        };
+
+        input.addEventListener('focus', handler);
+        input.addEventListener('click', handler);
+    });
+}
+
+function initAutoSelect() {
+    bindAutoSelect("#coal-form");     // 原煤管理
+    bindAutoSelect("#electric-form"); // 电煤计算
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initAutoSelect);
+} else {
+    initAutoSelect();
+}
+
+// =============================
+// 标签页切换
+// =============================
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => {
+            b.classList.remove('border-blue-500', 'text-blue-600');
+            b.classList.add('border-transparent', 'text-gray-500');
+        });
+        document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.add('hidden'));
+
+        btn.classList.remove('border-transparent', 'text-gray-500');
+        btn.classList.add('border-blue-500', 'text-blue-600');
+
+        const panelId = btn.id.replace('tab-', 'panel-');
+        document.getElementById(panelId).classList.remove('hidden');
+    });
+});
+
+// =============================
+// 全局变量
+// =============================
+let selectedCoalIds = [];
+let selectedRow = null;
+let editingId = null;
+let ratioChart = null;
+
+// =============================
+// 加载原煤数据（列表 + 选择弹窗）
+// =============================
+function loadCoals() {
+    fetch('/api/coals')
+        .then(response => response.json())
+        .then(coals => {
+            // ---- 原煤列表 ----
+            const tableBody = document.getElementById('coal-table-body');
+            if (tableBody) {
+                tableBody.innerHTML = '';
+
+                coals.forEach(coal => {
+                    const row = document.createElement('tr');
+                    row.setAttribute("data-id", coal.id);
+                    row.classList.add("cursor-pointer", "hover:bg-blue-50");
+
+                    const volatile = Number(coal.volatile ?? 0).toFixed(2);
+                    const recovery = Number(coal.recovery ?? 0).toFixed(2);
+                    const gValue = Number(coal.g_value ?? 0).toFixed(2);
+                    const xValue = Number(coal.x_value ?? 0).toFixed(2);
+                    const yValue = Number(coal.y_value ?? 0).toFixed(2);
+
+                    row.innerHTML = `
+                        <td class="py-2 px-4 border">${coal.name}</td>
+                        <td class="py-2 px-4 border">${coal.calorific}</td>
+                        <td class="py-2 px-4 border">${coal.ash.toFixed(2)}%</td>
+                        <td class="py-2 px-4 border">${coal.sulfur.toFixed(2)}%</td>
+                        <td class="py-2 px-4 border">${volatile}%</td>
+                        <td class="py-2 px-4 border">${recovery}%</td>
+                        <td class="py-2 px-4 border">${gValue}</td>
+                        <td class="py-2 px-4 border">${xValue}</td>
+                        <td class="py-2 px-4 border">${yValue}</td>
+                        <td class="py-2 px-4 border">${coal.price}</td>
+                        <td class="py-2 px-4 border">${(coal.short_transport ?? 0).toFixed(2)}</td>
+                        <td class="py-2 px-4 border">${(coal.screening_fee ?? 0).toFixed(2)}</td>
+                        <td class="py-2 px-4 border">${(coal.crushing_fee ?? 0).toFixed(2)}</td>
+                        <td class="py-2 px-4 border text-center">
+                            ${
+                        coal.is_domestic
+                            ? `<div class="flex justify-center items-center"><img src="/static/icons/china.svg" style="width:20px;height:20px;display:inline-block;"></div>`
+                            : `<div class="flex justify-center items-center"><img src="/static/icons/global.svg" style="width:20px;height:20px;display:inline-block;"></div>`
+                    }
+                        </td>
+                    `;
+
+                    row.onclick = () => {
+                        if (selectedRow) selectedRow.classList.remove("bg-blue-100");
+                        row.classList.add("bg-blue-100");
+                        selectedRow = row;
+                        editCoal(coal);
+                    };
+
+                    tableBody.appendChild(row);
+                });
+            }
+
+            // ---- 选择弹窗中的表格 ----
+            loadCoalSelectionTable(coals);
+        });
+}
+
+// 原煤选择表格（弹窗）
+function loadCoalSelectionTable(coals) {
+    const tableBody = document.getElementById('coal-select-table');
+    if (!tableBody) return;
+
+    tableBody.innerHTML = '';
+
+    coals.forEach(coal => {
+        const row = document.createElement('tr');
+        const isSelected = selectedCoalIds.length === 0 || selectedCoalIds.includes(coal.id);
+
+        row.innerHTML = `
+            <td class="py-2 px-3 border-b text-center">
+                <input type="checkbox" class="coal-checkbox" data-id="${coal.id}" ${isSelected ? 'checked' : ''}>
+            </td>
+            <td class="py-2 px-3 border">${coal.name}</td>
+            <td class="py-2 px-3 border">${coal.calorific}</td>
+            <td class="py-2 px-3 border">${coal.price}</td>
+            <td class="border px-3 py-2 text-center">
+                ${
+            coal.is_domestic
+                ? `<div class="flex justify-center items-center"><img src="/static/icons/china.svg" title="境内煤" style="width:20px;height:20px;display:inline-block;"></div>`
+                : `<div class="flex justify-center items-center"><img src="/static/icons/global.svg" title="坑口煤" style="width:20px;height:20px;display:inline-block;"></div>`
+        }
+            </td>
+        `;
+
+        tableBody.appendChild(row);
+    });
+}
+
+// =============================
+// 原煤选择弹窗事件
+// =============================
+(function bindCoalSelectModal() {
+    const btn = document.getElementById('coal-select-btn');
+    const modal = document.getElementById('coal-select-modal');
+    if (!btn || !modal) return;
+
+    btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        modal.classList.toggle('hidden');
+    });
+
+    // 点击外部关闭
+    document.addEventListener('click', (e) => {
+        if (!modal.contains(e.target) && !btn.contains(e.target)) {
+            modal.classList.add('hidden');
+        }
+    });
+
+    // 全选
+    const btnAll = document.getElementById('select-all-coals');
+    if (btnAll) {
+        btnAll.addEventListener('click', () => {
+            document.querySelectorAll('.coal-checkbox').forEach(cb => cb.checked = true);
+        });
+    }
+
+    // 清空
+    const btnClear = document.getElementById('clear-all-coals');
+    if (btnClear) {
+        btnClear.addEventListener('click', () => {
+            document.querySelectorAll('.coal-checkbox').forEach(cb => cb.checked = false);
+        });
+    }
+
+    // 确认
+    const btnConfirm = document.getElementById('confirm-coal-selection');
+    if (btnConfirm) {
+        btnConfirm.addEventListener('click', () => {
+            const checkboxes = document.querySelectorAll('.coal-checkbox:checked');
+            selectedCoalIds = Array.from(checkboxes).map(cb => parseInt(cb.dataset.id));
+
+            const textElement = document.getElementById('selected-coals-text');
+            if (selectedCoalIds.length === 0) {
+                textElement.textContent = '未选择原煤';
+            } else if (document.querySelectorAll('.coal-checkbox').length === selectedCoalIds.length) {
+                textElement.textContent = '全部原煤';
+            } else {
+                textElement.textContent = `${selectedCoalIds.length}种原煤`;
+            }
+
+            modal.classList.add('hidden');
+        });
+    }
+})();
+
+// =============================
+// 原煤编辑 + 重置
+// =============================
+function editCoal(coal) {
+    editingId = coal.id;
+
+    const set = (id, value, digits) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+
+        if (typeof value === "string") {
+            el.value = value;
+            return;
+        }
+
+        if (value === undefined || value === null || value === "" || isNaN(Number(value))) {
+            el.value = "";
+        } else {
+            el.value = (digits !== undefined) ? Number(value).toFixed(digits) : value;
+        }
+    };
+
+    set('coal-name', coal.name);
+    set('coal-calorific', coal.calorific, 1);
+    set('coal-ash', coal.ash, 2);
+    set('coal-sulfur', coal.sulfur, 2);
+    set('coal-volatile', coal.volatile, 2);
+    set('coal-recovery', coal.recovery, 2);
+    set('coal-g_value', coal.g_value, 2);
+    set('coal-x_value', coal.x_value, 2);
+    set('coal-y_value', coal.y_value, 2);
+    set('coal-price', coal.price, 1);
+    set('coal-short-transport', coal.short_transport, 2);
+    set('coal-screening-fee', coal.screening_fee, 2);
+    set('coal-crushing-fee', coal.crushing_fee, 2);
+
+    const submitBtn = document.getElementById("coal-submit-btn");
+    submitBtn.innerHTML = `<i class="fa fa-save mr-1"></i>保存修改`;
+    submitBtn.classList.remove("bg-blue-600");
+    submitBtn.classList.add("bg-green-600");
+
+    const delBtn = document.getElementById("coal-delete-btn");
+    const cancelBtn = document.getElementById("coal-cancel-btn");
+    delBtn.classList.remove("hidden");
+    cancelBtn.classList.remove("hidden");
+
+    document.getElementById('coal-form').scrollIntoView({behavior: 'smooth'});
+    document.getElementById("coal-is-domestic").value = coal.is_domestic ? 1 : 0;
+}
+
+function resetCoalFormState() {
+    editingId = null;
+    const form = document.getElementById('coal-form');
+    if (form) form.reset();
+
+    document.getElementById('coal-short-transport').value = 0;
+    document.getElementById('coal-screening-fee').value = 0;
+    document.getElementById('coal-crushing-fee').value = 0;
+    document.getElementById("coal-is-domestic").value = 1;
+
+    const submitBtn = document.getElementById("coal-submit-btn");
+    submitBtn.innerHTML = `<i class="fa fa-plus mr-1"></i>添加`;
+    submitBtn.classList.add("bg-blue-600");
+    submitBtn.classList.remove("bg-green-600");
+
+    document.getElementById("coal-delete-btn").classList.add("hidden");
+    document.getElementById("coal-cancel-btn").classList.add("hidden");
+
+    if (selectedRow) {
+        selectedRow.classList.remove("bg-blue-100");
+        selectedRow = null;
+    }
+
+    if (document.activeElement) document.activeElement.blur();
+}
+
+const coalCancelBtn = document.getElementById('coal-cancel-btn');
+if (coalCancelBtn) {
+    coalCancelBtn.addEventListener('click', resetCoalFormState);
+}
+
+// =============================
+// 原煤表单提交（新增 / 修改）
+// =============================
+const coalForm = document.getElementById('coal-form');
+if (coalForm) {
+    coalForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+
+        const coal = {
+            id: editingId,
+            name: document.getElementById('coal-name').value,
+            calorific: parseFloat(document.getElementById('coal-calorific').value),
+            ash: parseFloat(document.getElementById('coal-ash').value),
+            sulfur: parseFloat(document.getElementById('coal-sulfur').value),
+            volatile: parseFloat(document.getElementById('coal-volatile').value),
+            recovery: parseFloat(document.getElementById('coal-recovery').value),
+            g_value: parseFloat(document.getElementById('coal-g_value').value),
+            x_value: parseFloat(document.getElementById('coal-x_value').value),
+            y_value: parseFloat(document.getElementById('coal-y_value').value),
+            price: parseFloat(document.getElementById('coal-price').value),
+            short_transport: parseFloat(document.getElementById('coal-short-transport').value || 0),
+            screening_fee: parseFloat(document.getElementById('coal-screening-fee').value || 0),
+            crushing_fee: parseFloat(document.getElementById('coal-crushing-fee').value || 0),
+            is_domestic: parseInt(document.getElementById("coal-is-domestic").value)
+        };
+
+        fetch('/api/coals', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(coal)
+        })
+            .then(res => res.json())
+            .then(() => {
+                alert(editingId ? '修改成功！' : '添加成功！');
+                resetCoalFormState();
+                loadCoals();
+            });
+    });
+}
+
+// =============================
+// 删除原煤
+// =============================
+const coalDeleteBtn = document.getElementById('coal-delete-btn');
+if (coalDeleteBtn) {
+    coalDeleteBtn.addEventListener('click', () => {
+        if (!editingId) {
+            alert('请先在原煤列表中点击选择一条要删除的原煤。');
+            return;
+        }
+
+        if (!confirm('确定要删除该原煤吗？删除后不可恢复！')) return;
+
+        fetch(`/api/coals/${editingId}`, {method: 'DELETE'})
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) {
+                    alert(data.message || '删除失败');
+                    return;
+                }
+                alert('删除成功！');
+                resetCoalFormState();
+                loadCoals();
+            });
+    });
+}
+
+// =============================
+// 配煤计算（/api/blend）
+// =============================
+const blendForm = document.getElementById('blend-form');
+if (blendForm) {
+    blendForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+
+        const target = {
+            min_calorific: parseFloat(document.getElementById('target-calorific').value),
+            max_ash: parseFloat(document.getElementById('target-ash').value),
+            max_sulfur: parseFloat(document.getElementById('target-sulfur').value)
+        };
+
+        fetch('/api/blend', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(target)
+        })
+            .then(response => response.json())
+            .then(result => {
+                if (!result.success) {
+                    alert(result.message);
+                    return;
+                }
+
+                // 切换到结果 Tab
+                const tabResult = document.getElementById('tab-result');
+                if (tabResult) tabResult.click();
+
+                const indicators = document.getElementById('result-indicators');
+                const unitCost = parseFloat(result.指标.单位成本).toFixed(2);
+                const taxCost = (result.指标.单位成本 * 1.13).toFixed(2);
+
+                indicators.innerHTML = `
+                    <div>
+                        <p class="text-gray-600">发热量</p>
+                        <p class="text-2xl font-bold">${result.指标.发热量} 大卡</p>
+                    </div>
+                    <div>
+                        <p class="text-gray-600">灰分</p>
+                        <p class="text-2xl font-bold">${result.指标.灰分} %</p>
+                    </div>
+                    <div>
+                        <p class="text-gray-600">硫分</p>
+                        <p class="text-2xl font-bold">${result.指标.硫分} %</p>
+                    </div>
+                    <div>
+                        <p class="text-gray-600">单位成本（不含税）</p>
+                        <p class="text-2xl font-bold">${unitCost} 元/吨</p>
+                    </div>
+                    <div>
+                        <p class="text-gray-600">单位成本（含13%增值税价）</p>
+                        <p class="text-2xl font-bold text-red-600">${taxCost} 元/吨</p>
+                    </div>
+                `;
+
+                const ratioTable = document.getElementById('ratio-table');
+                ratioTable.innerHTML = `
+                    <table class="min-w-full">
+                        <thead>
+                            <tr class="bg-gray-100">
+                                <th class="py-2 px-4 border-b">原煤名称</th>
+                                <th class="py-2 px-4 border-b">配煤比例</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${result.ratio.map(item => `
+                                <tr>
+                                    <td class="py-2 px-4 border-b">${item.name}</td>
+                                    <td class="py-2 px-4 border-b">${(item.ratio).toFixed(1)}%</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+
+                const ctx = document.getElementById('ratio-chart').getContext('2d');
+                if (ratioChart) ratioChart.destroy();
+                ratioChart = new Chart(ctx, {
+                    type: 'pie',
+                    data: {
+                        labels: result.ratio.map(item => item.name),
+                        datasets: [{
+                            data: result.ratio.map(item => item.ratio),
+                            backgroundColor: [
+                                '#3e95cd', '#8e5ea2', '#3cba9f',
+                                '#e8c3b9', '#c45850', '#ffcc00'
+                            ]
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {legend: {position: 'right'}}
+                    }
+                });
+            });
+    });
+}
+
+// =============================
+// 电煤步长（保持单选逻辑）
+// =============================
+document.querySelectorAll('.step-checkbox').forEach(checkbox => {
+    checkbox.addEventListener('change', function () {
+        if (this.checked) {
+            document.querySelectorAll('.step-checkbox').forEach(cb => {
+                if (cb !== this) cb.checked = false;
+            });
+        }
+    });
+});
+
+// =============================
+// 桶水位更新：ratio 0~1
+// =============================
+function updateWaterLevel(tankEl, ratio) {
+    const fill = tankEl.querySelector(".coal-oil-fill");
+    const waterTop = tankEl.querySelector(".coal-oil-water-top");
+
+    const h = tankEl.clientHeight;
+
+    const visualZone = h * 0.75; // 桶可视高度
+    const offset = h * 0.10;     // 底部留 10%
+
+    const waterHeight = visualZone * ratio + offset;
+
+    fill.style.height = waterHeight + "px";
+    waterTop.style.bottom = (waterHeight - 8) + "px";
+}
+
+// =============================
+// 电煤配比表单提交（/api/electric_blend）
+// =============================
+const electricForm = document.getElementById('electric-form');
+if (electricForm) {
+    electricForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const selectedSteps = Array.from(document.querySelectorAll('.step-checkbox:checked'))
+            .map(cb => parseFloat(cb.value));
+        const stepSizes = selectedSteps.length > 0 ? selectedSteps : [10];
+
+        const target = {
+            calorific: parseFloat(document.getElementById('electric-calorific').value),
+            selected_coal_ids: selectedCoalIds,
+            step_sizes: stepSizes
+        };
+
+        const resultPanel = document.getElementById("electric-result");
+        const listDiv = document.getElementById("electric-plan-list");
+        listDiv.innerHTML = '<div class="text-center py-4">计算中...</div>';
+        resultPanel.classList.remove("hidden");
+
+        try {
+            const response = await fetch('/api/electric_blend', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(target)
+            });
+
+            const result = await response.json();
+
+            if (!result.success) {
+                listDiv.innerHTML = `<div class="text-center py-4 text-red-500">${result.message || '动力煤配比计算失败'}</div>`;
+                return;
+            }
+            // 确保 CCI 已加载
+            if (!latestCCI) {
+                await loadLatestCCI();
+            }
+
+            renderElectricPlans(result.plans);
+        } catch (error) {
+            listDiv.innerHTML = `<div class="text-center py-4 text-red-500">计算失败：${error.message}</div>`;
+        }
+    });
+}
+
+// =============================
+// 电煤方案渲染（桶形 UI 核心）
+// =============================
+function renderElectricPlans(plans) {
+    const list = document.getElementById("electric-plan-list");
+    list.innerHTML = "";
+
+    if (!plans || plans.length === 0) {
+        list.innerHTML = `<div class="text-center py-4 text-gray-500">暂无满足条件的方案</div>`;
+        return;
+    }
+
+    plans.forEach((plan, index) => {
+        const cost = Math.round(plan.mix_cost);
+        const taxCost = Math.round(plan.mix_cost * 1.13);
+        const calorific = Math.round(plan.mix_calorific);
+        const isBest = index === 0;
+        const cciInfo = latestCCI
+            ? buildCCITooltip()
+            : {bgClass: "bg-gray-100", tipText: "CCI 数据加载中…"};
+        const cciPriceText = latestCCI
+            ? `${Math.round(latestCCI.price)}元/吨`
+            : "—";
+
+        const card = document.createElement("div");
+        card.className =
+            "bg-white border border-gray-200 rounded-2xl p-6 shadow-sm hover:shadow-md transition mb-6 overflow-visible";
+
+        // --- 桶卡片：按比例从小到大排序显示 ---
+        const sortedItems = [...plan.items].sort((a, b) => (a.ratio || 0) - (b.ratio || 0));
+
+        // const coalBlocks = sortedItems.map(item => {
+        //     const pct = (item.ratio * 100).toFixed(1) // Math.round(item.ratio * 100);
+        //     return `
+        //         <div class="coal-oil-tank-wrapper">
+        //             <div class="coal-oil-tank">
+        //                 <div class="coal-oil-fill"></div>
+        //                 <div class="coal-oil-water-top"></div>
+        //                 <div class="coal-oil-content">
+        //                     <div class="coal-oil-name">${item.name}</div>
+        //                     <div class="coal-oil-pct">${pct}%</div>
+        //                     <div class="coal-oil-calorific">${Math.round(item.calorific)} 大卡</div>
+        //                     <div class="coal-oil-pct">权重1</div>
+        //                 </div>
+        //             </div>
+        //         </div>
+        //     `;
+        // }).join("");
+        // 先找出最小比例（大于 0）
+        const ratios = sortedItems
+            .map(it => it.ratio)
+            .filter(r => r > 0);
+
+        const minRatio = ratios.length > 0 ? Math.min(...ratios) : 0.0001; // 避免除 0
+
+        const coalBlocks = sortedItems.map(item => {
+            const pct = (item.ratio * 100).toFixed(1);
+
+            // 计算权重 = 当前比例 / 最小比例
+            const weight = minRatio > 0 ? (item.ratio / minRatio).toFixed(1) : "1.0";
+
+            return `
+                <div class="coal-oil-tank-wrapper">
+                    <div class="coal-oil-tank">
+                        <div class="coal-oil-fill"></div>
+                        <div class="coal-oil-water-top"></div>
+                        <div class="coal-oil-content">
+                            <div class="coal-oil-name">${item.name}</div>
+                            <div class="coal-oil-pct">${pct}%</div>
+                            <div class="coal-oil-calorific">${Math.round(item.calorific)} 大卡</div>
+                            <div class="coal-oil-pct">${Math.round(weight)}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join("");
+        card.innerHTML = `
+            <div class="plan-grid overflow-visible">
+
+                <!-- 左列：方案标题 -->
+                <div class="flex flex-col">
+                    <div class="flex items-center">
+                        <span class="text-xl font-bold">配煤方案 ${index + 1}</span>
+                        ${
+            isBest
+                ? `<span class="ml-2 px-2 py-1 bg-red-100 text-red-600 text-sm rounded">最低成本</span>`
+                : ""
+        }
+                    </div>
+                    <!-- 新增：热值信息，两行模式 -->
+                    <div class="text-gray-700 text-xl mt-1 pl-1">
+                        热值：<span class="font-semibold">${calorific} kcal</span>
+                    </div>
+                </div>
+
+                <!-- 中列：桶形煤卡 -->
+                <div class="flex flex-wrap gap-4 items-center" style="margin-left:4px;">
+                    ${coalBlocks}
+                </div>
+
+                <!-- 右列：成本 + 按钮 -->
+                <div class="flex items-center justify-end space-x-6 overflow-visible">
+                <div class="text-gray-800 text-base font-bold leading-8 text-right mr-8">
+                      
+                        <div class="flex justify-end whitespace-nowrap overflow-visible">
+
+                           <span class="inline-flex items-center font-semibold"  
+                                    onmouseenter="showCCITooltip(this)"
+                                    onmouseleave="hideCCITooltip(this)">
+                                CCI周均价：
+                                <span class="relative inline-block cursor-help text-lg font-bold ml-1"   >
+                                    ${cciPriceText}
+                            
+                                    <!-- Tooltip -->
+                                    <div
+                                          class="
+                                            cci-tooltip
+                                            absolute
+                                            left-1/2
+                                            -translate-x-1/2
+                                            bottom-full
+                                            mb-3
+                                            hidden
+                                            text-sm font-semibold
+                                            text-gray-800
+                                            rounded-xl
+                                            shadow-2xl
+                                            px-4
+                                            py-3
+                                            whitespace-nowrap
+                                          "
+                                          style="
+                                            ${cciInfo.bgStyle};
+                                            z-index: 999999;
+                                          "
+                                        >
+                                        <!-- 箭头 -->
+                                       <span
+                                            class="
+                                                absolute
+                                                top-full
+                                                left-1/2
+                                                -translate-x-1/2
+                                                w-0 h-0
+                                                border-l-[7px]
+                                                border-r-[7px]
+                                                border-t-[7px]
+                                                border-l-transparent
+                                                border-r-transparent
+                                            "
+                                            style="
+                                                margin-top:-1px;
+                                                border-top-color:${cciInfo.arrowColor};
+                                            "
+                                        ></span>
+                            
+                                        ${cciInfo.tipText}
+                                    </div>
+                                </span>
+                            </span>
+                        
+                        </div> 
+                                              
+                        <div class="flex justify-end whitespace-nowrap">
+                            <span>倒推策克价格</span>
+                            <span style="display:inline-block; width:16px; text-align:center;">：</span>
+                            <span class="line-through " style="font-size: 18px;">400元/吨</span>
+                        </div>
+                        <div class="flex justify-end whitespace-nowrap">
+                            <span>策克成本（含税）</span>
+                            <span style="display:inline-block; width:16px; text-align:center;">：</span>
+                            <span class="text-red-600 " style="font-size: 18px;">${taxCost}元/吨</span>
+                        </div>
+                        <div class="flex justify-end whitespace-nowrap">
+                            <span>预测销售毛利</span>
+                            <span style="display:inline-block; width:16px; text-align:center;">：</span>
+                            <span style="font-size: 18px;" class="line-through text-blue-600" >100元/吨</span>
+                 
+                        </div>
+                    <!-- < div class="text-gray-800 text-base font-bold leading-8 text-right" style="transform: translateX(-30px);">
+                        <div class="flex justify-end whitespace-nowrap">
+                            <span>成本（不含税）</span>
+                            <span style="display:inline-block; width:16px; text-align:center;">：</span>
+                            <span class="text-blue-600 " style="font-size: 18px;">${cost} 元/吨</span>
+                        </div>
+                        <div class="flex justify-end whitespace-nowrap">
+                            <span>成本（含13%增值税）</span>
+                            <span style="display:inline-block; width:16px; text-align:center;">：</span>
+                            <span class="text-red-600 " style="font-size: 18px;">${taxCost} 元/吨</span>
+                        </div>
+                        <div-- class="flex justify-end whitespace-nowrap">
+                            <span>热值</span>
+                            <span style="display:inline-block; width:16px; text-align:center;">：</span>
+                            <span style="font-size: 18px;">${calorific} kcal</span>
+                        </div>-->
+                    </div>
+
+                    <button class="plan-confirm-btn">
+                        <i class="fa fa-check"></i>
+                        <span class="text-base">确定使用该方案</span>
+                    </button>
+
+                </div>
+            </div>
+        `;
+
+        // 详情部分
+        const detail = document.createElement("div");
+        detail.className = "hidden bg-gray-50 border border-gray-200 rounded-lg p-4 mt-4";
+
+        // 把 plan.items 里的真实配比，合并回 all_coals
+        const allCoalsEnriched = (plan.all_coals || []).map(c => {
+            const key = obj =>
+                (obj && obj.id !== undefined && obj.id !== null)
+                    ? `id_${obj.id}`
+                    : `name_${obj.name}`;
+
+            const itemMap = new Map((plan.items || []).map(it => [key(it), it]));
+            const used = itemMap.get(key(c));
+            const ratio = used ? used.ratio : 0;
+
+            const blendingFee = c.blending_fee ?? 1.8;
+            const unitCost =
+                c.price +
+                c.short_transport +
+                c.screening_fee +
+                c.crushing_fee +
+                blendingFee;
+
+            return {
+                ...c,
+                ratio,
+                blending_fee: blendingFee,
+                unit_cost: unitCost
+            };
+        });
+
+        // 用新的 all_coals 调用详情表
+        detail.innerHTML = buildDetailTable({
+            ...plan,
+            all_coals: allCoalsEnriched
+        });
+
+        const toggle = document.createElement("button");
+        toggle.className = "detail-toggle-btn";
+        toggle.innerHTML = '<i class="fa fa-chevron-down"></i> 展开详情';
+
+        toggle.onclick = () => {
+            const isHidden = detail.classList.contains("hidden");
+            detail.classList.toggle("hidden");
+
+            if (isHidden) {
+                toggle.classList.add("expanded");
+                toggle.innerHTML = '<i class="fa fa-chevron-down"></i> 收起详情';
+            } else {
+                toggle.classList.remove("expanded");
+                toggle.innerHTML = '<i class="fa fa-chevron-down"></i> 展开详情';
+            }
+        };
+
+        card.appendChild(toggle);
+        card.appendChild(detail);
+
+        list.appendChild(card);
+
+        // 在 card 已经插入 DOM 之后，设置桶水位
+        const tanks = card.querySelectorAll(".coal-oil-tank");
+        sortedItems.forEach((item, i) => {
+            updateWaterLevel(tanks[i], item.ratio);
+        });
+    });
+}
+
+// =============================
+// 配比详情表格（参与配比在前，未参与配比在后）
+// =============================
+function buildDetailTable1(plan) {
+    const blendingFee = 1.8;
+    const allCoals = plan.all_coals || [];
+
+    const makeKey = obj =>
+        (obj && obj.id !== undefined && obj.id !== null)
+            ? `id_${obj.id}`
+            : `name_${obj.name}`;
+
+    const itemMap = new Map((plan.items || []).map(it => [makeKey(it), it]));
+
+    let enriched = allCoals.map(c => {
+        const item = itemMap.get(makeKey(c));
+        const ratio = item ? item.ratio : 0;
+
+        const unitCost =
+            c.price +
+            c.short_transport +
+            c.screening_fee +
+            c.crushing_fee +
+            blendingFee;
+
+        const costContribution = unitCost * ratio;
+
+        return {
+            id: c.id,
+            name: c.name,
+            calorific: c.calorific,
+            price: c.price,
+            short_transport: c.short_transport,
+            screening_fee: c.screening_fee,
+            crushing_fee: c.crushing_fee,
+            ratio,
+            unit_cost: unitCost,
+            cost_contribution: costContribution,
+            is_domestic: c.is_domestic
+        };
+    });
+
+    // --- 排序：先用到的（ratio>0），再没用到的；用到的内部按比例从大到小 ---
+    enriched.sort((a, b) => {
+        const aa = a.ratio > 0 ? 0 : 1;
+        const bb = b.ratio > 0 ? 0 : 1;
+        if (aa !== bb) return aa - bb;
+
+        if (aa === 0) {
+            return b.ratio - a.ratio;
+        }
+        // 都是未参与配比，按名称排序
+        return String(a.name).localeCompare(String(b.name), 'zh-Hans-CN');
+    });
+
+    const totalCal = enriched
+        .reduce((s, c) => s + c.calorific * c.ratio, 0)
+        .toFixed(0);
+
+    const totalCost = enriched.reduce(
+        (s, c) => s + c.cost_contribution,
+        0
+    );
+
+    const pricePart = enriched.reduce((s, c) => s + c.price * c.ratio, 0);
+    const shortPart = enriched.reduce((s, c) => s + c.short_transport * c.ratio, 0);
+    const screenPart = enriched.reduce((s, c) => s + c.screening_fee * c.ratio, 0);
+    const crushPart = enriched.reduce((s, c) => s + c.crushing_fee * c.ratio, 0);
+    const blendPart = enriched.some(c => c.ratio > 0) ? blendingFee : 0;
+
+    const weightedUnitCost =
+        pricePart + shortPart + screenPart + crushPart + blendPart;
+
+    return `
+        <h3 class="font-semibold mb-2">配比详情</h3>
+
+        <table class="min-w-full text-sm bg-white rounded shadow">
+            <thead>
+                <tr class="bg-gray-100">
+                    <th class="border px-3 py-2 text-left">煤种</th>
+                    <th class="border px-3 py-2 text-right">比例</th>
+                    <th class="border px-3 py-2 text-right">热值</th>
+                    <th class="border px-3 py-2 text-right">单价</th>
+                    <th class="border px-3 py-2 text-right">短倒费</th>
+                    <th class="border px-3 py-2 text-right">过筛费</th>
+                    <th class="border px-3 py-2 text-right">破碎费</th>
+                    <th class="border px-3 py-2 text-right">附加(1.8)</th>
+                    <th class="border px-3 py-2 text-right">单位成本</th>
+                    <th class="border px-3 py-2 text-right">配比成本</th>
+                    <th class="border px-3 py-2 text-center">策克</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                ${enriched
+        .map(c => {
+            const pct =
+                c.ratio > 0.0001
+                    ? `${(c.ratio * 100).toFixed(1)}%`
+                    : "—";
+            const contribution =
+                c.ratio > 0.0001
+                    ? c.cost_contribution.toFixed(2)
+                    : "0.00";
+
+            return `
+                        <tr class="${c.ratio > 0.0001 ? "" : "text-gray-400"}">
+                            <td class="border px-3 py-2">${c.name}</td>
+                            <td class="border px-3 py-2 text-right">${pct}</td>
+
+                            <td class="border px-3 py-2 text-right">${c.calorific}</td>
+                            <td class="border px-3 py-2 text-right">${c.price.toFixed(2)}</td>
+                            <td class="border px-3 py-2 text-right">${c.short_transport.toFixed(2)}</td>
+                            <td class="border px-3 py-2 text-right">${c.screening_fee.toFixed(2)}</td>
+                            <td class="border px-3 py-2 text-right">${c.crushing_fee.toFixed(2)}</td>
+
+                            <td class="border px-3 py-2 text-right">${blendingFee.toFixed(2)}</td>
+
+                            <td class="border px-3 py-2 text-right">${c.unit_cost.toFixed(2)}</td>
+                            <td class="border px-3 py-2 text-right">${contribution}</td>
+                            <td class="border px-3 py-2 text-center">
+                                ${
+                c.is_domestic
+                    ? `<div class="flex justify-center items-center"><img src="/static/icons/china.svg" title="境内煤" style="width:20px;height:20px;display:inline-block;"></div>`
+                    : `<div class="flex justify-center items-center"><img src="/static/icons/global.svg" title="坑口煤" style="width:20px;height:20px;display:inline-block;"></div>`
+            }
+                            </td>
+                        </tr>`;
+        })
+        .join("")}
+            </tbody>
+
+            <tfoot class="bg-gray-100 font-bold">
+                <tr>
+                    <td class="border px-3 py-2">合计</td>
+                    <td class="border px-3 py-2"></td>
+
+                    <td class="border px-3 py-2 text-right">${totalCal}</td>
+
+                    <!-- 合并 6 列显示公式 -->
+                    <td class="border px-3 py-2 text-center text-xs md:text-sm" colspan="6">
+
+                        ${
+        enriched
+            .filter(c => c.ratio > 0.0001)
+            .map(c => {
+                const parts = [];
+
+                if (c.price !== 0) parts.push(c.price.toFixed(2));
+                if (c.short_transport !== 0) parts.push(c.short_transport.toFixed(2));
+                if (c.screening_fee !== 0) parts.push(c.screening_fee.toFixed(2));
+                if (c.crushing_fee !== 0) parts.push(c.crushing_fee.toFixed(2));
+                parts.push(blendingFee.toFixed(2));
+
+                const pct = (c.ratio * 100).toFixed(0) + "%";
+                return `(${parts.join(" + ")}) * ${pct}`;
+            })
+            .join(" + ")
+    }
+
+                        = <span class="text-blue-600 font-bold text-lg">${Math.round(totalCost)}</span>
+                        （含税：
+                            <span class="text-red-600 font-bold text-lg">${Math.round(totalCost * 1.13)}</span>
+                        ）
+                    </td>
+
+                    <td class="border px-3 py-2 text-right text-blue-600 font-bold text-lg">
+                        ${Math.round(totalCost)}
+                    </td>
+
+                    <td class="border px-3 py-2"></td>
+                </tr>
+            </tfoot>
+        </table>
+    `;
+}
+
+function buildDetailTable(plan) {
+    const blendingFee = 1.8;
+    const allCoals = plan.all_coals || [];
+
+    // ---- 构造唯一键（兼容无 id 情况） ----
+    const makeKey = obj =>
+        (obj && obj.id !== undefined && obj.id !== null)
+            ? `id_${obj.id}`
+            : `name_${obj.name}`;
+
+    // ---- 建立 itemMap 方便查找参与比例 ----
+    const itemMap = new Map((plan.items || []).map(it => [makeKey(it), it]));
+
+    // ---- enriched 数据集合 ----
+    let enriched = allCoals.map(c => {
+        const item = itemMap.get(makeKey(c));
+        const ratio = item ? item.ratio : 0;
+
+        const unitCost =
+            c.price +
+            c.short_transport +
+            c.screening_fee +
+            c.crushing_fee +
+            blendingFee;
+
+        const costContribution = unitCost * ratio;
+
+        return {
+            id: c.id,
+            name: c.name,
+            calorific: c.calorific,
+            price: c.price,
+            short_transport: c.short_transport,
+            screening_fee: c.screening_fee,
+            crushing_fee: c.crushing_fee,
+            ratio,
+            unit_cost: unitCost,
+            cost_contribution: costContribution,
+            is_domestic: c.is_domestic
+        };
+    });
+
+    // ======================================================
+    // ★★ 排序 — 按你最新要求：小比例 → 大比例 → 0 排最后 ★★
+    // ======================================================
+    enriched.sort((a, b) => {
+        const usedA = a.ratio > 0 ? 1 : 0;
+        const usedB = b.ratio > 0 ? 1 : 0;
+
+        // 参与配比的排前面
+        if (usedA !== usedB) return usedB - usedA;
+
+        // 都参与配比 → 比例从小到大排序
+        if (usedA === 1 && usedB === 1) {
+            return a.ratio - b.ratio;
+        }
+
+        // 都未参与配比 → 按名称排序
+        return String(a.name).localeCompare(String(b.name), 'zh-Hans-CN');
+    });
+
+    // ---- 合计计算 ----
+    const totalCal = enriched
+        .reduce((s, c) => s + c.calorific * c.ratio, 0)
+        .toFixed(0);
+
+    const totalCost = enriched.reduce((s, c) => s + c.cost_contribution, 0);
+
+    const pricePart = enriched.reduce((s, c) => s + c.price * c.ratio, 0);
+    const shortPart = enriched.reduce((s, c) => s + c.short_transport * c.ratio, 0);
+    const screenPart = enriched.reduce((s, c) => s + c.screening_fee * c.ratio, 0);
+    const crushPart = enriched.reduce((s, c) => s + c.crushing_fee * c.ratio, 0);
+    const blendPart = enriched.some(c => c.ratio > 0) ? blendingFee : 0;
+
+    return `
+        <h3 class="font-semibold mb-2">配比详情</h3>
+
+        <table class="min-w-full text-sm bg-white rounded shadow">
+            <thead>
+                <tr class="bg-gray-100">
+                    <th class="border px-3 py-2 text-left">煤种</th>
+                    <th class="border px-3 py-2 text-right">比例</th>
+                    <th class="border px-3 py-2 text-right">热值</th>
+                    <th class="border px-3 py-2 text-right">单价</th>
+                    <th class="border px-3 py-2 text-right">短倒费</th>
+                    <th class="border px-3 py-2 text-right">过筛费</th>
+                    <th class="border px-3 py-2 text-right">破碎费</th>
+                    <th class="border px-3 py-2 text-right">附加(1.8)</th>
+                    <th class="border px-3 py-2 text-right">单位成本</th>
+                    <th class="border px-3 py-2 text-right">配比成本</th>
+                    <th class="border px-3 py-2 text-center">策克</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                ${enriched
+        .map(c => {
+            const pct =
+                c.ratio > 0.0001
+                    ? `${(c.ratio * 100).toFixed(1)}%`
+                    : "—";
+
+            const contribution =
+                c.ratio > 0.0001
+                    ? c.cost_contribution.toFixed(2)
+                    : "0.00";
+
+            return `
+                        <tr class="${c.ratio > 0.0001 ? "" : "text-gray-400"}">
+                            <td class="border px-3 py-2">${c.name}</td>
+                            <td class="border px-3 py-2 text-right">${pct}</td>
+
+                            <td class="border px-3 py-2 text-right">${c.calorific}</td>
+                            <td class="border px-3 py-2 text-right">${c.price.toFixed(2)}</td>
+                            <td class="border px-3 py-2 text-right">${c.short_transport.toFixed(2)}</td>
+                            <td class="border px-3 py-2 text-right">${c.screening_fee.toFixed(2)}</td>
+                            <td class="border px-3 py-2 text-right">${c.crushing_fee.toFixed(2)}</td>
+
+                            <td class="border px-3 py-2 text-right">${blendingFee.toFixed(2)}</td>
+
+                            <td class="border px-3 py-2 text-right">${c.unit_cost.toFixed(2)}</td>
+                            <td class="border px-3 py-2 text-right">${contribution}</td>
+
+                            <td class="border px-3 py-2 text-center">
+                                <div class="flex justify-center items-center">
+                                    ${
+                c.is_domestic
+                    ? `<img src="/static/icons/china.svg" title="境内煤" style="width:20px;height:20px;">`
+                    : `<img src="/static/icons/global.svg" title="坑口煤" style="width:20px;height:20px;">`
+            }
+                                </div>
+                            </td>
+                        </tr>`;
+        })
+        .join("")}
+            </tbody>
+
+            <tfoot class="bg-gray-100 font-bold">
+                <tr>
+                    <td class="border px-3 py-2">合计</td>
+                    <td class="border px-3 py-2"></td>
+
+                    <td class="border px-3 py-2 text-right">${totalCal}</td>
+
+                    <td class="border px-3 py-2 text-center text-xs md:text-sm" colspan="6">
+
+                        ${
+        enriched
+            .filter(c => c.ratio > 0.0001)
+            .map(c => {
+                const parts = [];
+
+                if (c.price !== 0) parts.push(c.price.toFixed(2));
+                if (c.short_transport !== 0) parts.push(c.short_transport.toFixed(2));
+                if (c.screening_fee !== 0) parts.push(c.screening_fee.toFixed(2));
+                if (c.crushing_fee !== 0) parts.push(c.crushing_fee.toFixed(2));
+                parts.push(blendingFee.toFixed(2));
+
+                const pct = (c.ratio * 100).toFixed(1) + "%";
+                return `(${parts.join(" + ")}) * ${pct}`;
+            })
+            .join(" + ")
+    }
+
+                        = <span class="text-blue-600 font-bold text-lg">${Math.round(totalCost)}</span>
+                        （含税：
+                            <span class="text-red-600 font-bold text-lg">${Math.round(totalCost * 1.13)}</span>
+                        ）
+                    </td>
+
+                    <td class="border px-3 py-2 text-right text-blue-600 font-bold text-lg">
+                        ${Math.round(totalCost)}
+                    </td>
+
+                    <td class="border px-3 py-2"></td>
+                </tr>
+            </tfoot>
+        </table>
+    `;
+}
+
+
+// =============================
+// 初始化（加载数据 + 绑定校验）
+// =============================
+window.onload = () => {
+    loadCoals();
+    loadLatestCCI();
+    // 发热量：1000–9000
+    attachRangeValidator("coal-calorific", 1000, 9000, "发热量必须在 1000~9000 之间");
+    attachRangeValidator("electric-calorific", 1000, 9000, "发热量必须在 1000~9000 之间");
+    attachRangeValidator("target-calorific", 1000, 9000, "发热量必须在 1000~9000 之间");
+
+    // 灰分 1–50
+    attachRangeValidator("coal-ash", 1, 50, "灰分必须在 1~50 之间");
+
+    // 硫分 0.1–3
+    attachRangeValidator("coal-sulfur", 0.1, 3, "硫分必须在 0.1~3 之间");
+
+    // 挥发分 0–50
+    attachRangeValidator("coal-volatile", 0, 50, "挥发分必须在 0~50 之间");
+
+    // 回收率 0–100
+    attachRangeValidator("coal-recovery", 0, 100, "回收率必须在 0~100 之间");
+
+    // G 值 0–90
+    attachRangeValidator("coal-g_value", 0, 90, "G 值必须在 0~90 之间");
+
+    // 过筛费 0–20
+    attachRangeValidator("coal-screening-fee", 0, 20, "过筛费必须在 0~20 之间");
+
+    // 破碎费 0–10
+    attachRangeValidator("coal-crushing-fee", 0, 10, "破碎费必须在 0~10 之间");
+
+    // 短倒费 0–30
+    attachRangeValidator("coal-short-transport", 0, 30, "短倒费必须在 0~30 之间");
+
+    // 价格 0–1000
+    attachRangeValidator("coal-price", 0, 1000, "价格必须在 0~1000 之间");
+};
