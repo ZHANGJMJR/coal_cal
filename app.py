@@ -586,8 +586,8 @@ def confirm_plan():
         img = MIMEImage(image_bytes, name=f"配煤方案{datetime.datetime.now().strftime("%Y%m%d%H%M%S")}.png")
         msg.attach(img)
 
-        server = smtplib.SMTP_SSL("smtp.163.com", 465, timeout=20 )
-        server.login("danel209@163.com", "QETCN35bsHrzLm55")
+        server = smtplib.SMTP_SSL("smtp.163.com", 465, timeout=30 ) # QETCN35bsHrzLm55
+        server.login("danel209@163.com", "HFv2m37b9R33Rkbm") # HFv2m37b9R33Rkbm
         server.send_message(msg)
         server.quit()
 
