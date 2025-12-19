@@ -571,14 +571,33 @@ def confirm_plan():
                             """
 
         # ---------- 发送邮件 ----------
+        # to_list = [
+        #     # "xin.ma@southgobi.com",
+        #     # "wei.jin@southgobi.com",
+        #     "xuefeng.zhang@southgobi.com"
+        # ]
         to_list = [
-            # "xin.ma@southgobi.com",
-            # "wei.jin@southgobi.com",
-            "xuefeng.zhang@southgobi.com"
+            # {
+            #     "name": "马鑫",
+            #     "email": "xin.ma@southgobi.com"
+            # },
+            # {
+            #     "name": "金纬",
+            #     "email": "wei.jin@southgobi.com"
+            # },
+            {
+                "name": "张雪峰",
+                "email": "xuefeng.zhang@southgobi.com"
+            },
+            {
+                "name": "丹尼尔",
+                "email": "danel109@163.com"
+            }
         ]
         msg = MIMEMultipart()
         msg["From"] = "danel209@163.com"
-        msg["To"] = ", ".join(to_list)  # ← 你后面可做成配置
+        to_emails = [u["email"] for u in to_list]
+        msg["To"] = ", ".join(to_emails)
         msg["Subject"] = subject
 
         msg.attach(MIMEText(html_body, "html", "utf-8"))
@@ -591,7 +610,8 @@ def confirm_plan():
         server.send_message(msg)
         server.quit()
 
-        return jsonify({"success": True})
+        return jsonify({"success": True,
+                        "recipients": ";".join(u['name'] for u in to_list)})
 
     except Exception as e:
         traceback.print_exc()

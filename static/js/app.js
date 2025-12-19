@@ -876,7 +876,7 @@ async function handleConfirmPlan(button, planData) {
 
         const result = await res.json();
         if (result.success) {
-            alert("方案已发送邮件！");
+            alert(`该方案已成功发送邮件给：\n${result.recipients }`);
         } else {
             alert("发送失败：" + result.message);
         }
