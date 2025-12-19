@@ -72,7 +72,7 @@ def save_excel_to_mysql(excel_path: str):
     # ---------- 4. 过滤价格为空的行（关键修复） ----------
     df = df.dropna(subset=["price_rmb"])
 
-    print(f"有效数据行数：{len(df)}")
+    # print(f"有效数据行数：{len(df)}")
 
     # ---------- 5. 导入 cci_detail ----------
     import_date = datetime.today().date()
@@ -119,7 +119,7 @@ def save_excel_to_mysql(excel_path: str):
     cursor.close()
     conn.close()
 
-    print(f"✅ 入库完成 | 上周均价 = {price_avg}")
+    # print(f"✅ 入库完成 | 上周均价 = {price_avg}")
 
 # ==================================================
 # 主流程
@@ -154,7 +154,7 @@ def main():
         filepath = os.path.join(DOWNLOAD_DIR, filename)
 
         download.save_as(filepath)
-        print("📥 下载完成：", filepath)
+        # print("📥 下载完成：", filepath)
 
         browser.close()
 
@@ -163,14 +163,14 @@ def main():
 
     # ---------- 删除本地文件 ----------
     os.remove(filepath)
-    print("🧹 本地文件已删除")
+    # print("🧹 本地文件已删除")
 
 
 def safe_job():
     try:
         main()
     except Exception:
-        print("❌ 定时任务执行异常：")
+        # print("❌ 定时任务执行异常：")
         traceback.print_exc()
 
 

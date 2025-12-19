@@ -9,6 +9,12 @@ import logging
 from werkzeug.exceptions import NotFound
 from decimal import Decimal
 from itertools import product
+import base64
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
+# from datetime import datetime
 
 app = Flask(__name__)
 CORS(app)
@@ -184,14 +190,14 @@ def save_coal():
         cursor.execute("""
             INSERT INTO raw_coals (name, calorific, ash, sulfur, volatile,
                                   recovery, g_value, x_value, y_value,
-                                  price, short_transport, screening_fee, crushing_fee, is_domestic)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                  price, short_transport, screening_fee, crushing_fee, is_domestic,stock)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             data["name"], data["calorific"], data["ash"], data["sulfur"],
             data["volatile"], data["recovery"], data["g_value"],
             data["x_value"], data["y_value"], data["price"],
             data["short_transport"], data["screening_fee"],
-            data["crushing_fee"], data["is_domestic"]
+            data["crushing_fee"], data["is_domestic"],data["stock"]
         ))
         coal_id = cursor.lastrowid
         log_coal_action(coal_id, "ADD", old_data=None, new_data=data, changes=None)
@@ -204,14 +210,14 @@ def save_coal():
             UPDATE raw_coals
             SET name=%s, calorific=%s, ash=%s, sulfur=%s, volatile=%s,
                 recovery=%s, g_value=%s, x_value=%s, y_value=%s,
-                price=%s, short_transport=%s, screening_fee=%s, crushing_fee=%s, is_domestic=%s
+                price=%s, short_transport=%s, screening_fee=%s, crushing_fee=%s, is_domestic=%s,stock=%s
             WHERE id=%s
         """, (
             data["name"], data["calorific"], data["ash"], data["sulfur"],
             data["volatile"], data["recovery"], data["g_value"],
             data["x_value"], data["y_value"], data["price"],
             data["short_transport"], data["screening_fee"],
-            data["crushing_fee"], data["is_domestic"], coal_id
+            data["crushing_fee"], data["is_domestic"], data["stock"], coal_id
         ))
 
         changes = {}
@@ -291,8 +297,9 @@ def _build_cci_tooltip(
     # Tooltip 文本：把 5500 基准价明确展示
     if cci_base_price is not None:
         tip_text = (
-            f"<div>CCI（5500）：{round(cci_base_price)} 元/吨</div>" 
+            f"<div>CCI（5500）：{round(cci_base_price)} 元/吨 (基于CCI上周均价)</div>" 
             f"<div>数据获取时间：{_format_datetime_cn(insert_time)}</div>"
+            f"<div>数据来源：中国煤炭资源网</div>"
         )
     else:
         tip_text = f"数据获取时间：{_format_datetime_cn(insert_time)}"
@@ -427,6 +434,171 @@ def calculate_blend():
 
 
 # ============================================================
+#       ★       主要用于获取前台的方案截图+发送邮件     ★
+# ============================================================
+def build_coal_detail_table(plan: dict):
+    rows = []
+
+    for it in plan.get("items", []):
+        location = "策克" if int(it.get("is_domestic", 1)) == 1 else "矿区"
+        rows.append(f"""
+        <tr>
+            <td>{it.get("name","")}</td>
+            <td align="right">{int(it.get("calorific",0))}</td>
+            <td align="right">{it.get("ratio_pct",0)}%</td>
+            <td align="right">{round(it.get("unit_cost",0),2)}</td>
+            <td align="center">{location}</td>
+        </tr>
+        """)
+
+    return f"""
+    <table border="1" cellpadding="6" cellspacing="0"
+           style="border-collapse:collapse; min-width:520px;">
+        <thead style="background:#f0f0f0; font-weight:bold;">
+            <tr>
+                <th>煤种</th>
+                <th>热值</th>
+                <th>配比</th>
+                <th>成本（元/吨）</th>
+                <th>来源</th>
+            </tr>
+        </thead>
+        <tbody>
+            {''.join(rows)}
+        </tbody>
+    </table>
+    """
+def build_summary_table(plan: dict):
+    return f"""
+    <table border="1" cellpadding="8" cellspacing="0"
+           style="border-collapse:collapse; min-width:420px; margin-bottom:10px;">
+        <tr>
+            <td style="background:#f5f5f5; font-weight:bold;">确认时间</td>
+            <td>{datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</td>
+        </tr>
+        <tr>
+            <td style="background:#f5f5f5; font-weight:bold;">方案类型</td>
+            <td>{plan.get("type", "")}</td>
+        </tr>
+        <tr>
+            <td style="background:#f5f5f5; font-weight:bold;">煤种数量</td>
+            <td>{plan.get("coal_count", 0)}</td>
+        </tr>
+        <tr>
+            <td style="background:#f5f5f5; font-weight:bold;">综合热值</td>
+            <td>{int(plan.get("mix_calorific", 0))} kcal</td>
+        </tr>
+        <tr>
+            <td style="background:#f5f5f5; font-weight:bold;">策克成本（含税）</td>
+            <td style="color:#d00000; font-weight:bold;">
+                {plan.get("mix_cost_tax", 0)} 元/吨
+            </td>
+        </tr>
+        <tr>
+            <td style="background:#f5f5f5; font-weight:bold;">倒推至策克价</td>
+            <td style="font-weight:bold;">
+                {plan.get("reverse_ceke_price", "")} 元/吨
+            </td>
+        </tr>
+        <tr>
+            <td style="background:#f5f5f5; font-weight:bold;">预测销售毛利（不含税）</td>
+            <td style="color:#2563eb; font-weight:bold;">
+                {plan.get("gross_profit", "")} 元/吨
+            </td>
+        </tr>
+    </table>
+    """
+def build_email_html(plan: dict):
+    summary_html = build_summary_table(plan)
+    coal_html = build_coal_detail_table(plan)
+
+    return f"""
+    <html>
+    <body style="font-family: Arial, Helvetica, sans-serif; font-size:14px; color:#111;">
+        <h3 style="margin-bottom:12px;">配煤方案确认信息</h3>
+
+        {summary_html}
+
+        <h3 style="margin:18px 0 8px;">煤种配比明细</h3>
+
+        {coal_html}
+
+        <p style="margin-top:12px; color:#555;">
+            详细计算过程及图示确认见附件截图。
+        </p>
+    </body>
+    </html>
+    """
+
+@app.route("/api/confirm_plan", methods=["POST"])
+def confirm_plan():
+    try:
+        data = request.json or {}
+        plan = data.get("plan")
+        screenshot_base64 = data.get("screenshot")
+
+        if not plan or not screenshot_base64:
+            return jsonify({"success": False, "message": "参数不完整"}), 400
+
+        # ---------- 解析截图 ----------
+        header, encoded = screenshot_base64.split(",", 1)
+        image_bytes = base64.b64decode(encoded)
+
+        # ---------- 邮件内容 ----------
+        subject = "【配煤方案确认】自动生成"
+        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        plan_text = f"""
+                    配煤方案确认时间：{now}
+                    
+                    方案类型：{plan.get("type")}
+                    煤种数量：{plan.get("coal_count")}
+                    综合热值：{int(plan.get("mix_calorific", 0))} kcal
+                    策克成本（含税）：{plan.get("mix_cost_tax")} 元/吨
+                    倒推策克价：{plan.get("reverse_ceke_price")} 元/吨
+                    预测销售毛利（不含税）：{plan.get("gross_profit")} 元/吨
+
+                    配比明细：
+                    """
+
+        html_body = build_email_html(plan)
+
+        for it in plan.get("items", []):
+            plan_text += f"""
+                            - {it['name']}：
+                              热值 {int(it['calorific'])} kcal
+                              比例 {it['ratio_pct']}%
+                            """
+
+        # ---------- 发送邮件 ----------
+        to_list = [
+            # "xin.ma@southgobi.com",
+            # "wei.jin@southgobi.com",
+            "xuefeng.zhang@southgobi.com"
+        ]
+        msg = MIMEMultipart()
+        msg["From"] = "danel209@163.com"
+        msg["To"] = ", ".join(to_list)  # ← 你后面可做成配置
+        msg["Subject"] = subject
+
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+        img = MIMEImage(image_bytes, name=f"配煤方案{datetime.datetime.now().strftime("%Y%m%d%H%M%S")}.png")
+        msg.attach(img)
+
+        server = smtplib.SMTP_SSL("smtp.163.com", 465, timeout=20 )
+        server.login("danel209@163.com", "QETCN35bsHrzLm55")
+        server.send_message(msg)
+        server.quit()
+
+        return jsonify({"success": True})
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"success": False, "message": str(e)})
+
+
+# ============================================================
 #               ★       详情表：后端生成 HTML     ★
 # ============================================================
 def build_detail_table_html(plan):
@@ -445,6 +617,7 @@ def build_detail_table_html(plan):
         short_transport = float(c.get("short_transport", 0))
         screening_fee = float(c.get("screening_fee", 0))
         crushing_fee = float(c.get("crushing_fee", 0))
+        stock = float(c.get("stock", 0))
 
         unit_cost = price + short_transport + screening_fee + crushing_fee + blending_fee
         cost_contribution = unit_cost * ratio
@@ -460,7 +633,8 @@ def build_detail_table_html(plan):
             "ratio": ratio,
             "unit_cost": unit_cost,
             "cost_contribution": cost_contribution,
-            "is_domestic": int(c.get("is_domestic", 1))
+            "is_domestic": int(c.get("is_domestic", 1)),
+            "stock": stock  # ⭐ 新增
         })
 
     # 你原 JS 最新排序：参与(>0)在前；参与内部比例小->大；0 在后
@@ -486,8 +660,10 @@ def build_detail_table_html(plan):
 
     def icon_html(is_domestic: int):
         if is_domestic == 1:
-            return '<img src="/static/icons/china.svg" title="境内煤" style="width:20px;height:20px;">'
-        return '<img src="/static/icons/global.svg" title="坑口煤" style="width:20px;height:20px;">'
+            return '策克'
+            # return '<img src="/static/icons/china.svg" title="境内煤" style="width:20px;height:20px;">'
+        return '矿区'
+        # return '<img src="/static/icons/global.svg" title="坑口煤" style="width:20px;height:20px;">'
 
     rows_html = []
     for c in enriched:
@@ -498,20 +674,22 @@ def build_detail_table_html(plan):
         rows_html.append(f"""
             <tr class="{row_class}">
                 <td class="border px-3 py-2">{c['name']}</td>
-                <td class="border px-3 py-2 text-right">{pct}</td>
                 <td class="border px-3 py-2 text-right">{int(round(c['calorific']))}</td>
+                <td class="border px-3 py-2 text-right">{pct}</td>
                 <td class="border px-3 py-2 text-right">{c['price']:.2f}</td>
                 <td class="border px-3 py-2 text-right">{c['short_transport']:.2f}</td>
                 <td class="border px-3 py-2 text-right">{c['screening_fee']:.2f}</td>
                 <td class="border px-3 py-2 text-right">{c['crushing_fee']:.2f}</td>
                 <td class="border px-3 py-2 text-right">{blending_fee:.2f}</td>
                 <td class="border px-3 py-2 text-right">{c['unit_cost']:.2f}</td>
-                <td class="border px-3 py-2 text-right">{contribution}</td>
+                
                 <td class="border px-3 py-2 text-center">
                     <div class="flex justify-center items-center">
                         {icon_html(c['is_domestic'])}
                     </div>
                 </td>
+                <td class="border px-3 py-2 text-right"> {c['stock']}</td>   <!-- ⭐ 库存 -->
+                <td class="border px-3 py-2 text-right">{contribution}</td>
             </tr>
         """)
 
@@ -521,16 +699,17 @@ def build_detail_table_html(plan):
             <thead>
                 <tr class="bg-gray-100">
                     <th class="border px-3 py-2 text-left">煤种</th>
-                    <th class="border px-3 py-2 text-right">比例</th>
                     <th class="border px-3 py-2 text-right">热值</th>
-                    <th class="border px-3 py-2 text-right">单价</th>
+                    <th class="border px-3 py-2 text-right">比例</th>
+                    <th class="border px-3 py-2 text-right">成本单价</th>
                     <th class="border px-3 py-2 text-right">短倒费</th>
                     <th class="border px-3 py-2 text-right">过筛费</th>
                     <th class="border px-3 py-2 text-right">破碎费</th>
-                    <th class="border px-3 py-2 text-right">附加(1.8)</th>
-                    <th class="border px-3 py-2 text-right">单位成本</th>
-                    <th class="border px-3 py-2 text-right">配比成本</th>
-                    <th class="border px-3 py-2 text-center">策克</th>
+                    <th class="border px-3 py-2 text-right">配煤费</th>
+                    <th class="border px-3 py-2 text-right">成本合计</th>
+                    <th class="border px-3 py-2 text-center">原煤所在地</th>
+                    <th class="border px-3 py-2 text-right">库存（吨）</th> <!-- ⭐ -->
+                    <th class="border px-3 py-2 text-right">配煤成本</th>
                 </tr>
             </thead>
             <tbody>
@@ -538,20 +717,19 @@ def build_detail_table_html(plan):
             </tbody>
             <tfoot class="bg-gray-100 font-bold">
                 <tr>
-                    <td class="border px-3 py-2">合计</td>
-                    <td class="border px-3 py-2"></td>
+                    <td class="border px-3 py-2 text-center " colspan="1" >合计</td>
+                    
                     <td class="border px-3 py-2 text-right">{int(total_cal)}</td>
-                    <td class="border px-3 py-2 text-center text-xs md:text-sm" colspan="6">
+                    <td class="border px-3 py-2 text-center text-xs md:text-sm" colspan="9">
                         {formula}
-                        = <span class="text-blue-600 font-bold text-lg">{int(round(total_cost))}</span>
+                        = <span class="text-blue-600 font-bold text-lg">{int(round(total_cost))}元/吨</span>
                         （含税：
-                            <span class="text-red-600 font-bold text-lg">{int(round(total_cost * (1 + VAT_RATE)))}</span>
+                            <span class="text-red-600 font-bold text-lg">{int(round(total_cost * (1 + VAT_RATE)))}元/吨</span>
                         ）
-                    </td>
+                    </td> 
                     <td class="border px-3 py-2 text-right text-blue-600 font-bold text-lg">
-                        {int(round(total_cost))}
+                        {int(round(total_cost))}元/吨
                     </td>
-                    <td class="border px-3 py-2"></td>
                 </tr>
             </tfoot>
         </table>
@@ -749,14 +927,14 @@ def electric_blend():
             placeholders = ', '.join(['%s'] * len(selected_coal_ids))
             cursor.execute(f"""
                 SELECT id, name, calorific, price, short_transport,
-                       screening_fee, crushing_fee, is_domestic
+                       screening_fee, crushing_fee, is_domestic, stock
                 FROM raw_coals
                 WHERE id IN ({placeholders})
             """, tuple(selected_coal_ids))
         else:
             cursor.execute("""
                 SELECT id, name, calorific, price, short_transport,
-                       screening_fee, crushing_fee, is_domestic
+                       screening_fee, crushing_fee, is_domestic, stock
                 FROM raw_coals
             """)
 
@@ -791,7 +969,19 @@ def electric_blend():
             coal_scores.append((i, score))
 
         sorted_idx = [i for i, _ in sorted(coal_scores, key=lambda x: x[1], reverse=True)]
-        top_idx = sorted_idx[:3]
+
+
+
+        # ⭐ 先找所有“单煤可行”的煤
+        must_keep_idx = [
+            i for i in range(n)
+            if cal[i] >= target_calorific
+        ]
+
+        # top_idx = sorted_idx[:5]
+        top_idx = list(dict.fromkeys(
+            must_keep_idx + sorted_idx
+        ))[:5]  # 5 比 3 安全很多
 
         coals2 = [{
             "id": ids[i],
@@ -894,7 +1084,8 @@ def electric_blend():
             "screening_fee": float(r.get("screening_fee", 0)),
             "crushing_fee": float(r.get("crushing_fee", 0)),
             "ratio": 0.0,
-            "is_domestic": int(r.get("is_domestic", 1))
+            "is_domestic": int(r.get("is_domestic", 1)),
+            "stock": float(r.get("stock", 0))  # ⭐ 新增
         } for r in rows]
 
         for p in plans:
@@ -945,11 +1136,11 @@ def electric_blend():
 
             if cci_base.get("success") and cci_base.get("cci_base_price") is not None:
                 base_price = float(cci_base["cci_base_price"])
-                adjusted = calc_cci_by_calorific(base_price, mix_cal)
+                adjusted = calc_cci_by_calorific(base_price, mix_cal) - 21.77
 
                 # ===== 倒推策克价格：CCI - 额外费用 =====
                 if cci_base.get("success") and adjusted is not None:
-                    reverse_ceke_price = round(adjusted - reverse_extra_fee - 21.77, 2)
+                    reverse_ceke_price = round(adjusted/(1 + VAT_RATE) - reverse_extra_fee , 2)*(1 + VAT_RATE)
                 else:
                     reverse_ceke_price = None
 
@@ -982,7 +1173,7 @@ def electric_blend():
                 # 你页面里目前“倒推策克价格/预测销售毛利”是写死的样式，这里先保持默认值（后续你要算也放这里）
                 # "reverse_ceke_price": 600,
                 "reverse_ceke_price": int(reverse_ceke_price),
-                "gross_profit": int(reverse_ceke_price - mix_cost),
+                "gross_profit": int(int(reverse_ceke_price - round(mix_cost * (1 + VAT_RATE), 2))/(1 + VAT_RATE)),
                 # CCI 展示信息：每个卡片直接可用
                 "cci": cci_for_plan
             }
@@ -997,6 +1188,89 @@ def electric_blend():
     except Exception as e:
         traceback.print_exc()
         return jsonify({"success": False, "message": str(e)})
+
+
+# ============================================================
+#               ★       API：配焦煤  配比（后端完成全部计算）     ★
+# ============================================================
+@app.route('/api/coking_blend', methods=['POST'])
+def coking_blend():
+    try:
+        data = request.json or {}
+
+        ash_min = data['ash_min']
+        ash_max = data['ash_max']
+        vm_min = data['vm_min']
+        vm_max = data['vm_max']
+        s_max = data['s_max']
+        g_min = data['g_min']
+
+        conn = get_connection()
+        cursor = conn.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("""
+            SELECT id, name, ash, volatile, sulfur, g_value, price
+            FROM raw_coals
+        """)
+        coals = cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        plans = []
+
+        # 示例：2~3 种煤，10% 步长（第一版足够）
+        from itertools import combinations
+
+        step = 10
+        ratios = [i for i in range(step, 100, step)]
+
+        for combo in combinations(coals, 3):
+            for r1 in ratios:
+                for r2 in ratios:
+                    r3 = 100 - r1 - r2
+                    if r3 <= 0:
+                        continue
+
+                    xs = [r1/100, r2/100, r3/100]
+
+                    ash = sum(xs[i]*combo[i]['ash'] for i in range(3))
+                    vm = sum(xs[i]*combo[i]['volatile'] for i in range(3))
+                    s = sum(xs[i]*combo[i]['sulfur'] for i in range(3))
+                    g = sum(xs[i]*combo[i]['g_value'] for i in range(3))
+                    cost = sum(xs[i]*combo[i]['price'] for i in range(3))
+
+                    if not (ash_min <= ash <= ash_max):
+                        continue
+                    if not (vm_min <= vm <= vm_max):
+                        continue
+                    if s > s_max:
+                        continue
+                    if g < g_min:
+                        continue
+
+                    plans.append({
+                        "items": [
+                            {"name": combo[i]['name'], "ratio": int(xs[i]*100)}
+                            for i in range(3)
+                        ],
+                        "ash": ash,
+                        "vm": vm,
+                        "s": s,
+                        "g": g,
+                        "cost": cost
+                    })
+
+        plans.sort(key=lambda x: x['cost'])
+
+        return jsonify({
+            "success": True,
+            "plans": plans[:50]
+        })
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"success": False, "message": str(e)})
+
+
 
 
 # ============================================================

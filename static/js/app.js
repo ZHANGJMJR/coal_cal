@@ -1,3 +1,11 @@
+function showLoading() {
+    document.getElementById("loading-overlay").classList.remove("hidden");
+}
+
+function hideLoading() {
+    document.getElementById("loading-overlay").classList.add("hidden");
+}
+
 // =============================
 // CCI：只从后端拿（后端返回 tooltip 所需全部字段）
 // =============================
@@ -167,6 +175,9 @@ function loadCoals() {
                             : `<div class="flex justify-center items-center"><img src="/static/icons/global.svg" style="width:20px;height:20px;display:inline-block;"></div>`
                     }
                         </td>
+                        <td class="py-2 px-4 border text-right">
+                            ${Number(coal.stock ?? 0).toFixed(0)}
+                        </td>
                     `;
 
                     row.onclick = () => {
@@ -303,6 +314,7 @@ function editCoal(coal) {
     set('coal-short-transport', coal.short_transport, 2);
     set('coal-screening-fee', coal.screening_fee, 2);
     set('coal-crushing-fee', coal.crushing_fee, 2);
+    set('coal-stock', coal.stock, 0);
 
     const submitBtn = document.getElementById("coal-submit-btn");
     submitBtn.innerHTML = `<i class="fa fa-save mr-1"></i>保存修改`;
@@ -368,7 +380,8 @@ if (coalForm) {
             short_transport: parseFloat(document.getElementById('coal-short-transport').value || 0),
             screening_fee: parseFloat(document.getElementById('coal-screening-fee').value || 0),
             crushing_fee: parseFloat(document.getElementById('coal-crushing-fee').value || 0),
-            is_domestic: parseInt(document.getElementById("coal-is-domestic").value)
+            is_domestic: parseInt(document.getElementById("coal-is-domestic").value),
+            stock: parseInt(document.getElementById('coal-stock').value || 0)
         };
 
         fetch('/api/coals', {
@@ -608,7 +621,9 @@ if (electricForm) {
 // =============================
 // 电煤方案渲染（前端只渲染；不再计算 tooltip / detail 表）
 // =============================
-function renderElectricPlans(plans) {
+function
+
+renderElectricPlans(plans) {
     const list = document.getElementById("electric-plan-list");
     list.innerHTML = "";
 
@@ -684,7 +699,7 @@ function renderElectricPlans(plans) {
                             <span class="inline-flex items-center font-semibold"
                                   onmouseenter="showCCITooltip(this)"
                                   onmouseleave="hideCCITooltip(this)">
-                                CCI周均价：
+                                热值${calorific}卡港口销售价（含税）：
                                 <span class="relative inline-block cursor-help text-lg font-bold ml-1">
                                     ${cciPriceText}
 
@@ -729,8 +744,7 @@ function renderElectricPlans(plans) {
                         </div>
 
                         <div class="flex justify-end whitespace-nowrap">
-                            <span>倒推策克价格</span>
-                            <span style="display:inline-block; width:16px; text-align:center;">：</span>
+                            <span>倒推至策克价格（含税）：</span>
                             <span style="font-size: 18px;">${plan.reverse_ceke_price ?? 400}元/吨</span>
                         </div>
 
@@ -747,13 +761,16 @@ function renderElectricPlans(plans) {
                         </div>
                     </div>
 
-                    <button class="plan-confirm-btn">
+                    <button class="plan-confirm-btn" data-plan-index="${index}">
                         <i class="fa fa-check"></i>
                         <span class="text-base">确定使用该方案</span>
                     </button>
                 </div>
             </div>
         `;
+        // 确定使用该方案绑定事件
+        const confirmBtn = card.querySelector(".plan-confirm-btn");
+        confirmBtn.onclick = () => handleConfirmPlan(confirmBtn, plan);
 
         // 详情区域：直接用后端返回的 HTML
         const detail = document.createElement("div");
@@ -789,6 +806,88 @@ function renderElectricPlans(plans) {
     });
 }
 
+
+//========"确定使用该方案" 处理函数 start
+// ======== 确定使用该方案（最终稳定版）========
+async function handleConfirmPlan(button, planData) {
+    try {
+        showLoading();   // ⭐ 显示转圈
+        const card = button.closest(".bg-white");
+        const detail = card.querySelector(".detail-toggle-btn + div");
+        const toggleBtn = card.querySelector(".detail-toggle-btn");
+
+        // 1️⃣ 强制展开详情
+        if (detail && detail.classList.contains("hidden")) {
+            toggleBtn.click();
+            await new Promise(r => setTimeout(r, 400));
+        }
+
+        // 2️⃣ 使用截图专用容器
+        const wrapper = document.getElementById("screenshot-wrapper");
+        wrapper.innerHTML = "";
+
+        // 3️⃣ 深拷贝整个方案卡片
+        const clone = card.cloneNode(true);
+        // ⭐⭐⭐ 关键修复：截图时解除桶的裁剪coal-oil-pct coal-oil-tank
+        // clone.querySelectorAll('.coal-oil-pct').forEach(tank => {
+        //     tank.style.overflow = 'visible';
+        // });
+        // ⭐ 仅截图时：整体上移桶内内容
+        clone.querySelectorAll('.coal-oil-content').forEach(el => {
+            el.style.top = '-0.5px';
+        });
+
+        // 4️⃣ 移除 absolute / fixed（关键）
+        clone.querySelectorAll("*").forEach(el => {
+            const style = window.getComputedStyle(el);
+            if (style.position === "absolute" || style.position === "fixed") {
+                el.style.position = "static";
+            }
+        });
+
+        wrapper.appendChild(clone);
+
+        // 5️⃣ 等 DOM 稳定
+        await new Promise(r => setTimeout(r, 300));
+
+        // 6️⃣ 截图（重点参数）
+        const canvas = await html2canvas(wrapper, {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: '#ffffff',
+
+            width: wrapper.scrollWidth,
+            height: wrapper.scrollHeight,
+            windowWidth: wrapper.scrollWidth,
+            windowHeight: wrapper.scrollHeight   // ⭐⭐⭐ 关键在这一行
+        });
+
+        const imageBase64 = canvas.toDataURL("image/png", 1.0);
+
+        // 7️⃣ 发给后端
+        const res = await fetch("/api/confirm_plan", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+                plan: planData,
+                screenshot: imageBase64
+            })
+        });
+
+        const result = await res.json();
+        if (result.success) {
+            alert("方案已发送邮件！");
+        } else {
+            alert("发送失败：" + result.message);
+        }
+    } catch (e) {
+        alert("发送失败：" + e.message);
+    } finally {
+        hideLoading();   // ⭐ 一定要关
+    }
+}
+
+//=========end
 
 // =============================
 // 初始化（加载数据 + 绑定校验）
